@@ -14,7 +14,162 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      profiles: {
+        Row: {
+          created_at: string
+          current_balance: number
+          current_mode: string
+          daily_goal_usd: number
+          display_name: string | null
+          email: string | null
+          id: string
+          risk_per_trade_pct: number
+          starting_balance: number
+          updated_at: string
+          watched_pairs: string[]
+        }
+        Insert: {
+          created_at?: string
+          current_balance?: number
+          current_mode?: string
+          daily_goal_usd?: number
+          display_name?: string | null
+          email?: string | null
+          id: string
+          risk_per_trade_pct?: number
+          starting_balance?: number
+          updated_at?: string
+          watched_pairs?: string[]
+        }
+        Update: {
+          created_at?: string
+          current_balance?: number
+          current_mode?: string
+          daily_goal_usd?: number
+          display_name?: string | null
+          email?: string | null
+          id?: string
+          risk_per_trade_pct?: number
+          starting_balance?: number
+          updated_at?: string
+          watched_pairs?: string[]
+        }
+        Relationships: []
+      }
+      signals: {
+        Row: {
+          confidence: number
+          created_at: string
+          direction: string
+          entry: number
+          id: string
+          indicators: Json | null
+          mode_context: string | null
+          pair: string
+          rationale: string | null
+          stop_loss: number
+          suggested_lot: number | null
+          take_profit_1: number
+          take_profit_2: number | null
+          timeframe: string
+          user_id: string
+        }
+        Insert: {
+          confidence?: number
+          created_at?: string
+          direction: string
+          entry: number
+          id?: string
+          indicators?: Json | null
+          mode_context?: string | null
+          pair: string
+          rationale?: string | null
+          stop_loss: number
+          suggested_lot?: number | null
+          take_profit_1: number
+          take_profit_2?: number | null
+          timeframe?: string
+          user_id: string
+        }
+        Update: {
+          confidence?: number
+          created_at?: string
+          direction?: string
+          entry?: number
+          id?: string
+          indicators?: Json | null
+          mode_context?: string | null
+          pair?: string
+          rationale?: string | null
+          stop_loss?: number
+          suggested_lot?: number | null
+          take_profit_1?: number
+          take_profit_2?: number | null
+          timeframe?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      trades: {
+        Row: {
+          closed_at: string | null
+          created_at: string
+          direction: string
+          entry: number
+          id: string
+          lot_size: number
+          mode: string
+          notes: string | null
+          opened_at: string
+          pair: string
+          pips: number | null
+          pnl_usd: number
+          signal_id: string | null
+          status: string
+          stop_loss: number | null
+          take_profit: number | null
+          user_id: string
+        }
+        Insert: {
+          closed_at?: string | null
+          created_at?: string
+          direction: string
+          entry: number
+          id?: string
+          lot_size?: number
+          mode?: string
+          notes?: string | null
+          opened_at?: string
+          pair: string
+          pips?: number | null
+          pnl_usd?: number
+          signal_id?: string | null
+          status?: string
+          stop_loss?: number | null
+          take_profit?: number | null
+          user_id: string
+        }
+        Update: {
+          closed_at?: string | null
+          created_at?: string
+          direction?: string
+          entry?: number
+          id?: string
+          lot_size?: number
+          mode?: string
+          notes?: string | null
+          opened_at?: string
+          pair?: string
+          pips?: number | null
+          pnl_usd?: number
+          signal_id?: string | null
+          status?: string
+          stop_loss?: number | null
+          take_profit?: number | null
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
