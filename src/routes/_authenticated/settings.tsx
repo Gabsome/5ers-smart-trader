@@ -1,0 +1,81 @@
+import { createFileRoute } from "@tanstack/react-router";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useServerFn } from "@tanstack/react-start";
+import { useEffect, useState } from "react";
+import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { getProfile, updateProfile } from "@/lib/trades.functions";
+
+export const Route = createFileRoute("/_authenticated/settings")({
+  component: Settings,
+  head: () => ({ meta: [{ title: "Settings — 5ers Challenge" }] }),
+});
+
+function Settings() {
+  const gFn = useServerFn(getProfile);
+  const uFn = useServerFn(updateProfile);
+  const qc = useQueryClient();
+  const { data: profile } = useQuery({ queryKey: ["profile"], queryFn: () => gFn() });
+
+  const [form, setForm] = useState({ starting_balance: "2500", current_balance: "2500", daily_goal_usd: "20", risk_per_trade_pct: "0.5", display_name: "" });
+  useEffect(() => {
+    if (profile) setForm({
+      starting_balance: String(profile.starting_balance),
+      current_balance: String(profile.current_balance),
+      daily_goal_usd: String(profile.daily_goal_usd),
+      risk_per_trade_pct: String(profile.risk_per_trade_pct),
+      display_name: profile.display_name ?? "",
+    });
+  }, [profile]);
+
+  const save = useMutation({
+    mutationFn: () => uFn({
+      data: {
+        starting_balance: Number(form.starting_balance),
+        current_balance: Number(form.current_balance),
+        daily_goal_usd: Number(form.daily_goal_usd),
+        risk_per_trade_pct: Number(form.risk_per_trade_pct),
+        display_name: form.display_name,
+      },
+    }),
+    onSuccess: () => { toast.success("Settings saved"); qc.invalidateQueries(); },
+    onError: (e: any) => toast.error("Save failed", { description: e?.message }),
+  });
+
+  return (
+    <div className="max-w-2xl space-y-6">
+      <h1 className="text-2xl font-bold">Settings</h1>
+
+      <div className="rounded-xl border border-border bg-card p-6 space-y-4">
+        <h2 className="font-semibold">Account</h2>
+        <div className="grid grid-cols-2 gap-4">
+          <Field label="Display name"><Input value={form.display_name} onChange={(e) => setForm({ ...form, display_name: e.target.value })} /></Field>
+          <Field label="Current mode"><Input value={profile?.current_mode ?? ""} disabled /></Field>
+          <Field label="Starting balance ($)"><Input type="number" value={form.starting_balance} onChange={(e) => setForm({ ...form, starting_balance: e.target.value })} /></Field>
+          <Field label="Current balance ($)"><Input type="number" value={form.current_balance} onChange={(e) => setForm({ ...form, current_balance: e.target.value })} /></Field>
+          <Field label="Daily goal ($)"><Input type="number" value={form.daily_goal_usd} onChange={(e) => setForm({ ...form, daily_goal_usd: e.target.value })} /></Field>
+          <Field label="Risk per trade (%)"><Input type="number" step="0.1" value={form.risk_per_trade_pct} onChange={(e) => setForm({ ...form, risk_per_trade_pct: e.target.value })} /></Field>
+        </div>
+        <Button onClick={() => save.mutate()} disabled={save.isPending}>Save changes</Button>
+      </div>
+
+      <div className="rounded-xl border border-border bg-card p-6 text-sm text-muted-foreground">
+        <h2 className="font-semibold text-foreground mb-2">How it works</h2>
+        <p>
+          The mode switcher (top-right) tells the AI whether you're on a Challenge, Verification, Funded, or Demo account.
+          On Challenge/Verification, signals are filtered conservatively to respect 5%/10% drawdown rules.
+          On Funded mode, lot suggestions get even tighter. Demo mode lets the AI be more experimental.
+        </p>
+        <p className="mt-3">
+          This dashboard does <strong className="text-foreground">not</strong> place trades on 5ers — log entries here after you execute them on the broker so tracking stays accurate.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return <div><Label className="text-xs mb-1 block">{label}</Label>{children}</div>;
+}
