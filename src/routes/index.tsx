@@ -4,6 +4,7 @@ import { motion } from "motion/react";
 import { TrendingUp, Bot, ShieldCheck, LineChart, Activity, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/use-auth";
+import { Logo } from "@/components/logo";
 
 export const Route = createFileRoute("/")({
   component: Landing,
@@ -28,7 +29,7 @@ function Landing() {
       <header className="border-b border-border/60 backdrop-blur sticky top-0 z-30 bg-background/80">
         <div className="container mx-auto flex items-center justify-between py-4 px-6">
           <Link to="/" className="flex items-center gap-2 font-bold">
-            <span className="grid place-items-center size-9 rounded-md bg-primary text-primary-foreground"><TrendingUp className="size-5" /></span>
+            <Logo size={36} />
             <span className="text-lg">5ers Challenge <span className="text-primary">·</span> <span className="text-muted-foreground font-medium">by Gabsome-X</span></span>
           </Link>
           <Link to="/login">

@@ -1,10 +1,10 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { TrendingUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { lovable } from "@/integrations/lovable";
 import { useAuth } from "@/hooks/use-auth";
+import { Logo } from "@/components/logo";
 
 export const Route = createFileRoute("/login")({
   component: LoginPage,
@@ -40,8 +40,8 @@ function LoginPage() {
   return (
     <div className="min-h-screen grid place-items-center bg-background px-6">
       <div className="w-full max-w-sm rounded-xl border border-border bg-card p-8 text-center">
-        <div className="size-12 rounded-md bg-primary text-primary-foreground grid place-items-center mx-auto mb-4">
-          <TrendingUp />
+        <div className="flex justify-center mb-4">
+          <Logo size={64} />
         </div>
         <h1 className="text-2xl font-bold">5ers Challenge</h1>
         <p className="text-sm text-muted-foreground mt-1">by Gabsome-X</p>
