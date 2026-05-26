@@ -1,9 +1,11 @@
 import { createFileRoute, Link, Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useEffect } from "react";
-import { LayoutDashboard, Radio, BookOpen, Settings, LogOut, TrendingUp } from "lucide-react";
+import { LayoutDashboard, Radio, BookOpen, Settings, LogOut } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
 import { ModeSwitcher } from "@/components/mode-switcher";
+import { Logo } from "@/components/logo";
+import { LoadingScreen } from "@/components/loading-screen";
 
 export const Route = createFileRoute("/_authenticated")({
   component: AuthLayout,
@@ -19,7 +21,7 @@ function AuthLayout() {
   }, [loading, user, nav]);
 
   if (loading || !user) {
-    return <div className="min-h-screen grid place-items-center text-muted-foreground">Loading…</div>;
+    return <LoadingScreen label="Loading your trade desk…" />;
   }
 
   const navItems = [
@@ -34,7 +36,7 @@ function AuthLayout() {
       <header className="border-b border-border bg-card/60 backdrop-blur sticky top-0 z-30">
         <div className="container mx-auto px-4 lg:px-6 py-3 flex items-center justify-between gap-4">
           <Link to="/dashboard" className="flex items-center gap-2 font-bold shrink-0">
-            <span className="grid place-items-center size-8 rounded-md bg-primary text-primary-foreground"><TrendingUp className="size-4" /></span>
+            <Logo size={32} />
             <span className="hidden sm:inline">5ers Challenge <span className="text-muted-foreground font-medium text-sm">· Gabsome-X</span></span>
           </Link>
           <nav className="flex items-center gap-1 overflow-x-auto">
