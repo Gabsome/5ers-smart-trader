@@ -110,7 +110,10 @@ function RootComponent() {
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
-        <Outlet />
+        <div className="flex min-h-screen flex-col">
+          <div className="flex-1"><Outlet /></div>
+          <Footer />
+        </div>
         <Toaster theme="dark" position="top-right" richColors />
       </AuthProvider>
     </QueryClientProvider>
