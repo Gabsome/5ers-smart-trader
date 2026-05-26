@@ -194,22 +194,28 @@ export const getDailyPick = createServerFn({ method: "POST" })
     const pairs = ((profile?.watched_pairs as string[] | undefined) ?? PAIRS);
     const mode = profile?.current_mode ?? "challenge";
 
+    // Multi-timeframe: trade TF + higher TF (1h) for confluence
+    const htf = "1h";
     const scans = await Promise.allSettled(
       pairs.map(async (pair) => {
-        const candles = await fetchCandles(pair, data.interval, 100);
-        return { pair, setup: detectSetup(candles) };
+        const [ltfCandles, htfCandles] = await Promise.all([
+          fetchCandles(pair, data.interval, 100),
+          fetchCandles(pair, htf, 100),
+        ]);
+        return { pair, setup: detectSetup(ltfCandles), htf: detectSetup(htfCandles) };
       }),
     );
 
     type Candidate = {
       pair: string; bias: "buy" | "sell"; entry: number; sl: number; tp: number;
-      slPips: number; tpPips: number; lot: number; score: number; setup: any;
+      slPips: number; tpPips: number; lot: number; score: number; setup: any; htf: any;
+      factors: string[];
     };
     const candidates: Candidate[] = [];
 
     for (const r of scans) {
       if (r.status !== "fulfilled") continue;
-      const { pair, setup } = r.value;
+      const { pair, setup, htf: htfSetup } = r.value;
       if (!setup || !setup.bias) continue;
 
       const pip = pipValue(pair);
@@ -227,26 +233,54 @@ export const getDailyPick = createServerFn({ method: "POST" })
       const sl = setup.bias === "buy" ? entry - slDistance : entry + slDistance;
       const tp = setup.bias === "buy" ? entry + tpDistance : entry - tpDistance;
 
-      const rsiSweet = setup.bias === "buy"
-        ? 100 - Math.abs(setup.rsi - 55)
-        : 100 - Math.abs(setup.rsi - 45);
-      const trendBonus = (setup.bias === "buy" && setup.trend === "up")
-        || (setup.bias === "sell" && setup.trend === "down") ? 25 : 0;
-      const score = Math.round(rsiSweet * 0.6 + trendBonus + 15);
+      // Structured analysis — every factor is an explicit, auditable reason
+      const factors: string[] = [];
+      const htfAligned = htfSetup && (
+        (setup.bias === "buy" && htfSetup.trend === "up") ||
+        (setup.bias === "sell" && htfSetup.trend === "down")
+      );
+      const ltfAligned = (setup.bias === "buy" && setup.trend === "up")
+        || (setup.bias === "sell" && setup.trend === "down");
+      const rsiInZone = setup.bias === "buy" ? setup.rsi > 40 && setup.rsi < 65 : setup.rsi > 35 && setup.rsi < 60;
+      const pullbackOk = Math.abs(setup.lastClose - setup.ema20) < setup.atr * 0.6;
 
-      candidates.push({ pair, bias: setup.bias, entry, sl, tp, slPips, tpPips, lot, score, setup });
+      if (htfAligned) factors.push(`H1 trend ${String(htfSetup.trend).toUpperCase()} confirms ${setup.bias.toUpperCase()} bias (top-down confluence).`);
+      if (ltfAligned) factors.push(`${data.interval} EMA20>EMA50 ${String(setup.trend).toUpperCase()} structure intact — trading with the trend.`);
+      if (pullbackOk) factors.push(`Price pulled back into EMA20 (dynamic S/R) instead of chasing extension.`);
+      if (rsiInZone) factors.push(`RSI ${setup.rsi.toFixed(0)} sits in healthy continuation zone (not overbought/oversold).`);
+      factors.push(`ATR-based SL (${slPips.toFixed(0)} pips) respects current volatility — no arbitrary stops.`);
+      factors.push(`Position sized for exact $${data.riskUsd} risk → $${data.targetUsd} target at lot ${lot} (math-verified).`);
+
+      // Score — penalize weak setups so we only return real edge
+      const rsiSweet = setup.bias === "buy" ? 100 - Math.abs(setup.rsi - 55) : 100 - Math.abs(setup.rsi - 45);
+      let score = Math.round(rsiSweet * 0.4);
+      if (htfAligned) score += 30;
+      if (ltfAligned) score += 20;
+      if (pullbackOk) score += 10;
+      if (!rsiInZone) score -= 15;
+
+      candidates.push({ pair, bias: setup.bias, entry, sl, tp, slPips, tpPips, lot, score, setup, htf: htfSetup, factors });
     }
 
-    if (!candidates.length) {
-      return { pick: null, reason: "No clean setup right now on watched pairs. Wait for price action." };
+    // Quality gate — refuse to guess if no setup clears the bar
+    const MIN_SCORE = 65;
+    const qualified = candidates.filter((c) => c.score >= MIN_SCORE);
+    if (!qualified.length) {
+      return {
+        pick: null,
+        reason: candidates.length
+          ? `Scanned ${candidates.length} setup(s) — none cleared the ${MIN_SCORE}-pt quality bar. Discipline > activity. Sit out.`
+          : "No clean setup on watched pairs right now. Wait for price action.",
+        candidates: candidates.length,
+      };
     }
 
-    candidates.sort((a, b) => b.score - a.score);
-    const best = candidates[0];
+    qualified.sort((a, b) => b.score - a.score);
+    const best = qualified[0];
 
     const apiKey = process.env.LOVABLE_API_KEY;
     let confidence = Math.min(95, best.score);
-    let rationale = `${best.pair} ${best.bias.toUpperCase()} — ${best.setup.trend} trend, RSI ${best.setup.rsi.toFixed(0)}, pullback into EMA20. Tight $20 TP keeps probability high.`;
+    let rationale = `${best.pair} ${best.bias.toUpperCase()} — H1 ${best.htf?.trend ?? "?"} + ${data.interval} ${best.setup.trend} alignment, RSI ${best.setup.rsi.toFixed(0)} pullback into EMA20.`;
 
     if (apiKey) {
       try {
@@ -256,8 +290,8 @@ export const getDailyPick = createServerFn({ method: "POST" })
           body: JSON.stringify({
             model: "google/gemini-2.5-flash",
             messages: [
-              { role: "system", content: `Prop-firm assistant. Context: ${MODE_BRIEFS[mode]} Plan: $${data.riskUsd} SL, $${data.targetUsd} TP scalp — MUST be high-probability. Return JSON only {"confidence":0-100,"rationale":"<=160 chars"}.` },
-              { role: "user", content: `Best pick: ${best.pair} ${best.bias.toUpperCase()} @ ${best.entry}. Trend ${best.setup.trend}, RSI ${best.setup.rsi.toFixed(1)}, ATR ${best.setup.atr.toFixed(5)}. SL ${best.sl.toFixed(5)} (${best.slPips.toFixed(0)}p), TP ${best.tp.toFixed(5)} (${best.tpPips.toFixed(0)}p), lot ${best.lot}.` },
+              { role: "system", content: `Senior prop-firm analyst. Context: ${MODE_BRIEFS[mode]} Plan: $${data.riskUsd} SL, $${data.targetUsd} TP. Quality over activity — if anything looks weak, lower confidence. Return JSON only {"confidence":0-100,"rationale":"<=200 chars explaining WHY this works"}.` },
+              { role: "user", content: `Pick: ${best.pair} ${best.bias.toUpperCase()} @ ${best.entry}. H1 trend ${best.htf?.trend}, ${data.interval} trend ${best.setup.trend}, RSI ${best.setup.rsi.toFixed(1)}, ATR ${best.setup.atr.toFixed(5)}. SL ${best.sl.toFixed(5)} (${best.slPips.toFixed(0)}p), TP ${best.tp.toFixed(5)} (${best.tpPips.toFixed(0)}p), lot ${best.lot}. Confluence: ${best.factors.join(" | ")}` },
             ],
           }),
         });
@@ -288,11 +322,16 @@ export const getDailyPick = createServerFn({ method: "POST" })
         target_usd: data.targetUsd,
         confidence,
         rationale,
+        factors: best.factors,
         rsi: best.setup.rsi,
         trend: best.setup.trend,
+        htf_trend: best.htf?.trend ?? null,
         timeframe: data.interval,
+        higher_timeframe: htf,
         generated_at: new Date().toISOString(),
+        disclaimer: "Educational use only — not financial advice. © Gabriel Marina Mwangi, Nakuru.",
       },
       candidates: candidates.length,
+      qualified: qualified.length,
     };
   });
