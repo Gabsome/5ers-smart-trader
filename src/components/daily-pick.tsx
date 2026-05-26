@@ -121,6 +121,23 @@ export function DailyPick() {
 
             <p className="text-sm text-foreground/85 italic border-l-2 border-primary/60 pl-3">"{p.rationale}"</p>
 
+            {Array.isArray(p.factors) && p.factors.length > 0 && (
+              <div className="rounded-md border border-border/60 bg-background/40 p-3 space-y-1.5">
+                <div className="text-[10px] uppercase tracking-widest text-muted-foreground font-semibold">Why this trade will work</div>
+                <ul className="space-y-1">
+                  {p.factors.map((f: string, i: number) => (
+                    <li key={i} className="text-xs text-foreground/85 flex gap-2">
+                      <span className="text-primary mt-0.5">▸</span><span>{f}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            <p className="text-[10px] text-muted-foreground text-center italic">
+              Educational use only · Not financial advice · © Gabriel Marina Mwangi, Nakuru
+            </p>
+
             <Button variant="outline" className="w-full" onClick={() => log.mutate()} disabled={log.isPending}>
               <BookPlus className="size-4 mr-2" /> Log as open trade
             </Button>
