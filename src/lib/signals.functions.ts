@@ -169,3 +169,130 @@ export const listSignals = createServerFn({ method: "GET" })
     if (error) throw new Error(error.message);
     return data;
   });
+
+/**
+ * Daily Pick — scans every watched pair and returns ONE highest-quality setup,
+ * sized so SL distance risks ~$100 and TP returns ~$20.
+ */
+export const getDailyPick = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator(
+    z.object({
+      interval: z.string().default("15min"),
+      riskUsd: z.number().min(10).max(10000).default(100),
+      targetUsd: z.number().min(1).max(10000).default(20),
+    }),
+  )
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("current_mode, watched_pairs")
+      .eq("id", userId)
+      .maybeSingle();
+
+    const pairs = ((profile?.watched_pairs as string[] | undefined) ?? PAIRS);
+    const mode = profile?.current_mode ?? "challenge";
+
+    const scans = await Promise.allSettled(
+      pairs.map(async (pair) => {
+        const candles = await fetchCandles(pair, data.interval, 100);
+        return { pair, setup: detectSetup(candles) };
+      }),
+    );
+
+    type Candidate = {
+      pair: string; bias: "buy" | "sell"; entry: number; sl: number; tp: number;
+      slPips: number; tpPips: number; lot: number; score: number; setup: any;
+    };
+    const candidates: Candidate[] = [];
+
+    for (const r of scans) {
+      if (r.status !== "fulfilled") continue;
+      const { pair, setup } = r.value;
+      if (!setup || !setup.bias) continue;
+
+      const pip = pipValue(pair);
+      const dpp = pair.includes("XAU") ? 10 : pair.includes("JPY") ? 9 : 10;
+      const slDistance = setup.atr * 1.2;
+      const slPips = slDistance / pip;
+      if (slPips <= 0) continue;
+
+      const rawLot = data.riskUsd / (slPips * dpp);
+      const lot = Math.max(0.01, Math.round(rawLot * 100) / 100);
+      const tpPips = data.targetUsd / (lot * dpp);
+      const tpDistance = tpPips * pip;
+
+      const entry = setup.lastClose;
+      const sl = setup.bias === "buy" ? entry - slDistance : entry + slDistance;
+      const tp = setup.bias === "buy" ? entry + tpDistance : entry - tpDistance;
+
+      const rsiSweet = setup.bias === "buy"
+        ? 100 - Math.abs(setup.rsi - 55)
+        : 100 - Math.abs(setup.rsi - 45);
+      const trendBonus = (setup.bias === "buy" && setup.trend === "up")
+        || (setup.bias === "sell" && setup.trend === "down") ? 25 : 0;
+      const score = Math.round(rsiSweet * 0.6 + trendBonus + 15);
+
+      candidates.push({ pair, bias: setup.bias, entry, sl, tp, slPips, tpPips, lot, score, setup });
+    }
+
+    if (!candidates.length) {
+      return { pick: null, reason: "No clean setup right now on watched pairs. Wait for price action." };
+    }
+
+    candidates.sort((a, b) => b.score - a.score);
+    const best = candidates[0];
+
+    const apiKey = process.env.LOVABLE_API_KEY;
+    let confidence = Math.min(95, best.score);
+    let rationale = `${best.pair} ${best.bias.toUpperCase()} — ${best.setup.trend} trend, RSI ${best.setup.rsi.toFixed(0)}, pullback into EMA20. Tight $20 TP keeps probability high.`;
+
+    if (apiKey) {
+      try {
+        const aiRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model: "google/gemini-2.5-flash",
+            messages: [
+              { role: "system", content: `Prop-firm assistant. Context: ${MODE_BRIEFS[mode]} Plan: $${data.riskUsd} SL, $${data.targetUsd} TP scalp — MUST be high-probability. Return JSON only {"confidence":0-100,"rationale":"<=160 chars"}.` },
+              { role: "user", content: `Best pick: ${best.pair} ${best.bias.toUpperCase()} @ ${best.entry}. Trend ${best.setup.trend}, RSI ${best.setup.rsi.toFixed(1)}, ATR ${best.setup.atr.toFixed(5)}. SL ${best.sl.toFixed(5)} (${best.slPips.toFixed(0)}p), TP ${best.tp.toFixed(5)} (${best.tpPips.toFixed(0)}p), lot ${best.lot}.` },
+            ],
+          }),
+        });
+        if (aiRes.ok) {
+          const j: any = await aiRes.json();
+          const txt: string = j.choices?.[0]?.message?.content ?? "";
+          const m = txt.match(/\{[\s\S]*\}/);
+          if (m) {
+            const parsed = JSON.parse(m[0]);
+            if (typeof parsed.confidence === "number") confidence = Math.round(parsed.confidence);
+            if (typeof parsed.rationale === "string") rationale = parsed.rationale;
+          }
+        }
+      } catch (e) { console.error("AI refine failed", e); }
+    }
+
+    return {
+      pick: {
+        pair: best.pair,
+        direction: best.bias,
+        entry: best.entry,
+        stop_loss: best.sl,
+        take_profit: best.tp,
+        lot_size: best.lot,
+        sl_pips: Math.round(best.slPips),
+        tp_pips: Math.round(best.tpPips),
+        risk_usd: data.riskUsd,
+        target_usd: data.targetUsd,
+        confidence,
+        rationale,
+        rsi: best.setup.rsi,
+        trend: best.setup.trend,
+        timeframe: data.interval,
+        generated_at: new Date().toISOString(),
+      },
+      candidates: candidates.length,
+    };
+  });
