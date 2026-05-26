@@ -7,6 +7,8 @@ import { Target, TrendingUp, TrendingDown, AlertTriangle, DollarSign } from "luc
 import { getDashboard } from "@/lib/trades.functions";
 import { TradingViewChart } from "@/components/tradingview-chart";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { DailyPick } from "@/components/daily-pick";
+import { LoadingScreen } from "@/components/loading-screen";
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
   component: Dashboard,
@@ -24,7 +26,7 @@ function Dashboard() {
   });
   const [pair, setPair] = useState("XAU/USD");
 
-  if (isLoading || !data) return <div className="text-muted-foreground">Loading dashboard…</div>;
+  if (isLoading || !data) return <LoadingScreen label="Loading your dashboard…" />;
 
   const goalColor = data.todayPnl >= data.dailyGoal ? "text-bull" : data.todayPnl >= 0 ? "text-foreground" : "text-bear";
   const ddPct = (data.drawdown.todayDd / data.drawdown.dailyLimit) * 100;
@@ -45,6 +47,8 @@ function Dashboard() {
         <SmallStat label="Open trades" value={String(data.openTrades)} />
         <SmallStat label="Total P&L" value={`${data.totalPnl >= 0 ? "+" : ""}$${data.totalPnl.toFixed(2)}`} accent={data.totalPnl >= 0 ? "bull" : "bear"} />
       </div>
+
+      <DailyPick />
 
       <div className="grid lg:grid-cols-3 gap-4">
         <div className="lg:col-span-2 rounded-xl border border-border bg-card p-5">
