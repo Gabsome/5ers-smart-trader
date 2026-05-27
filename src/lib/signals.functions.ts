@@ -234,14 +234,37 @@ export const getDailyPick = createServerFn({ method: "POST" })
       const slPips = slDistance / pip;
       if (slPips <= 0) continue;
 
+      // Lot sizing: target $riskUsd, but cap by 5ers max-lot rule
       const rawLot = data.riskUsd / (slPips * dpp);
-      const lot = Math.max(0.01, Math.round(rawLot * 100) / 100);
+      const maxLot = maxLotFor(pair);
+      let lot = Math.round(Math.min(rawLot, maxLot) * 100) / 100;
+      lot = Math.max(0.01, lot);
+      const lotCapped = rawLot > maxLot;
+      const actualRiskUsd = Math.round(lot * slPips * dpp);
       const tpPips = data.targetUsd / (lot * dpp);
       const tpDistance = tpPips * pip;
 
-      const entry = setup.lastClose;
+      // Entry timing — NOW vs WAIT. Ideal pullback zone = EMA20.
+      const idealEntry = setup.ema20;
+      const distToIdeal = Math.abs(setup.lastClose - idealEntry);
+      const enterNow = distToIdeal <= setup.atr * 0.25;
+      const entry = enterNow ? setup.lastClose : idealEntry;
       const sl = setup.bias === "buy" ? entry - slDistance : entry + slDistance;
       const tp = setup.bias === "buy" ? entry + tpDistance : entry - tpDistance;
+      const fmtPrice = (n: number) => n.toFixed(pair.includes("JPY") ? 3 : pair.includes("XAU") ? 2 : 5);
+      const timing = enterNow
+        ? {
+            action: "enter_now" as const,
+            order_type: "market" as const,
+            trigger_price: entry,
+            note: `Price is sitting at the EMA20 pullback zone — execute a market order now.`,
+          }
+        : {
+            action: "wait" as const,
+            order_type: (setup.bias === "buy" ? "buy_limit" : "sell_limit") as "buy_limit" | "sell_limit",
+            trigger_price: idealEntry,
+            note: `Price is ${(distToIdeal / pip).toFixed(0)} pips off the ideal entry. Place a ${setup.bias === "buy" ? "BUY LIMIT" : "SELL LIMIT"} at ${fmtPrice(idealEntry)} and let price come to you. Cancel if structure breaks.`,
+          };
 
       // Structured analysis — every factor is an explicit, auditable reason
       const factors: string[] = [];
@@ -253,27 +276,33 @@ export const getDailyPick = createServerFn({ method: "POST" })
         || (setup.bias === "sell" && setup.trend === "down");
       const rsiInZone = setup.bias === "buy" ? setup.rsi > 40 && setup.rsi < 65 : setup.rsi > 35 && setup.rsi < 60;
       const pullbackOk = Math.abs(setup.lastClose - setup.ema20) < setup.atr * 0.6;
+      const emaSeparation = Math.abs(setup.ema20 - setup.ema50) > setup.atr * 0.3;
 
       if (htfAligned) factors.push(`H1 trend ${String(htfSetup.trend).toUpperCase()} confirms ${setup.bias.toUpperCase()} bias (top-down confluence).`);
       if (ltfAligned) factors.push(`${data.interval} EMA20>EMA50 ${String(setup.trend).toUpperCase()} structure intact — trading with the trend.`);
-      if (pullbackOk) factors.push(`Price pulled back into EMA20 (dynamic S/R) instead of chasing extension.`);
-      if (rsiInZone) factors.push(`RSI ${setup.rsi.toFixed(0)} sits in healthy continuation zone (not overbought/oversold).`);
+      if (emaSeparation) factors.push(`EMA20/EMA50 cleanly separated (>0.3·ATR) — confirmed trend, not range chop.`);
+      if (pullbackOk) factors.push(`Price pulled back to EMA20 (dynamic S/R) instead of chasing extension.`);
+      if (rsiInZone) factors.push(`RSI ${setup.rsi.toFixed(0)} in healthy continuation zone (not overbought/oversold).`);
       factors.push(`ATR-based SL (${slPips.toFixed(0)} pips) respects current volatility — no arbitrary stops.`);
-      factors.push(`Position sized for exact $${data.riskUsd} risk → $${data.targetUsd} target at lot ${lot} (math-verified).`);
+      factors.push(enterNow
+        ? `Price is at the level — market entry valid right now.`
+        : `Pending ${timing.order_type.toUpperCase().replace("_", " ")} at EMA20 — disciplined entry, no chasing.`);
+      factors.push(`Lot ${lot} sized for ~$${actualRiskUsd} risk → $${data.targetUsd} target. ${lotCapped ? `(Capped by 5ers max-lot rule for $${balance.toFixed(0)} account.)` : "(Full risk allocated.)"}`);
 
-      // Score — penalize weak setups so we only return real edge
+      // Strict A+ scoring — HTF confluence is mandatory
       const rsiSweet = setup.bias === "buy" ? 100 - Math.abs(setup.rsi - 55) : 100 - Math.abs(setup.rsi - 45);
-      let score = Math.round(rsiSweet * 0.4);
-      if (htfAligned) score += 30;
+      let score = Math.round(rsiSweet * 0.3);
+      if (htfAligned) score += 35; else score -= 25;
       if (ltfAligned) score += 20;
+      if (emaSeparation) score += 10;
       if (pullbackOk) score += 10;
-      if (!rsiInZone) score -= 15;
+      if (!rsiInZone) score -= 20;
 
-      candidates.push({ pair, bias: setup.bias, entry, sl, tp, slPips, tpPips, lot, score, setup, htf: htfSetup, factors });
+      candidates.push({ pair, bias: setup.bias, entry, sl, tp, slPips, tpPips, lot, score, setup, htf: htfSetup, factors, timing, lotCapped, actualRiskUsd });
     }
 
-    // Quality gate — refuse to guess if no setup clears the bar
-    const MIN_SCORE = 65;
+    // Strict A+ quality gate — no room for error
+    const MIN_SCORE = 75;
     const qualified = candidates.filter((c) => c.score >= MIN_SCORE);
     if (!qualified.length) {
       return {
