@@ -187,12 +187,20 @@ export const getDailyPick = createServerFn({ method: "POST" })
     const { supabase, userId } = context;
     const { data: profile } = await supabase
       .from("profiles")
-      .select("current_mode, watched_pairs")
+      .select("current_mode, watched_pairs, current_balance")
       .eq("id", userId)
       .maybeSingle();
 
     const pairs = ((profile?.watched_pairs as string[] | undefined) ?? PAIRS);
     const mode = profile?.current_mode ?? "challenge";
+    const balance = Number(profile?.current_balance ?? 2500);
+
+    // 5ers max-lot caps (conservative, keeps you compliant on any account size).
+    // FX majors: 0.5 lot per $1k · JPY: 0.4 per $1k · Gold/XAU: 0.05 per $1k.
+    const maxLotFor = (pair: string) =>
+      pair.includes("XAU") ? Math.max(0.01, (balance / 1000) * 0.05)
+      : pair.includes("JPY") ? Math.max(0.01, (balance / 1000) * 0.4)
+      : Math.max(0.01, (balance / 1000) * 0.5);
 
     // Multi-timeframe: trade TF + higher TF (1h) for confluence
     const htf = "1h";
