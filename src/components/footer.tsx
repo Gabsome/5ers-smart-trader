@@ -8,7 +8,7 @@ export function Footer() {
         <div className="flex items-center gap-2">
           <ShieldCheck className="size-3.5 text-primary" />
           <span>
-            © {year} <span className="text-foreground font-semibold">Gabriel Marina Mwangi</span>, Nakuru, Kenya. All rights reserved.
+            © {year} <span className="text-foreground font-semibold">Gabriel Maina Mwangi</span>, Nakuru, Kenya. All rights reserved.
             <span className="hidden sm:inline"> · 5ers Challenge by Gabsome-X.</span>
           </span>
         </div>

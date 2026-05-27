@@ -107,6 +107,29 @@ export function DailyPick() {
               </div>
             </div>
 
+            {p.timing && (
+              <div className={`rounded-lg border px-3 py-2 flex items-center justify-between gap-3 ${
+                p.timing.action === "enter_now"
+                  ? "border-bull/50 bg-bull/10"
+                  : "border-primary/40 bg-primary/5"
+              }`}>
+                <div>
+                  <div className={`text-[10px] uppercase tracking-widest font-bold ${
+                    p.timing.action === "enter_now" ? "text-bull" : "text-primary"
+                  }`}>
+                    {p.timing.action === "enter_now" ? "✓ Enter now (market)" : "⏳ Wait — set pending order"}
+                  </div>
+                  <div className="text-xs text-foreground/85 mt-0.5">{p.timing.note}</div>
+                </div>
+                {p.timing.action !== "enter_now" && (
+                  <div className="text-right">
+                    <div className="text-[10px] text-muted-foreground uppercase">{p.timing.order_type}</div>
+                    <div className="text-sm font-bold font-mono text-primary">{Number(p.timing.trigger_price).toFixed(p.pair.includes("JPY") ? 3 : p.pair.includes("XAU") ? 2 : 5)}</div>
+                  </div>
+                )}
+              </div>
+            )}
+
             <div className="grid grid-cols-4 gap-2">
               <Cell label="Entry" value={Number(p.entry).toFixed(p.pair.includes("JPY") ? 3 : p.pair.includes("XAU") ? 2 : 5)} />
               <Cell label={`SL (-$${p.risk_usd})`} value={Number(p.stop_loss).toFixed(p.pair.includes("JPY") ? 3 : p.pair.includes("XAU") ? 2 : 5)} accent="bear" />
@@ -135,7 +158,7 @@ export function DailyPick() {
             )}
 
             <p className="text-[10px] text-muted-foreground text-center italic">
-              Educational use only · Not financial advice · © Gabriel Marina Mwangi, Nakuru
+              Educational use only · Not financial advice · © Gabriel Maina Mwangi, Nakuru
             </p>
 
             <Button variant="outline" className="w-full" onClick={() => log.mutate()} disabled={log.isPending}>
