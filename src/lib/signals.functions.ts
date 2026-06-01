@@ -407,5 +407,6 @@ export const getDailyPick = createServerFn({ method: "POST" })
       },
       candidates: candidates.length,
       qualified: qualified.length,
+      news_halt: newsBlocked.map((n) => ({ pair: n.pair, title: n.event.title, currency: n.event.currency, minutesAway: n.event.minutesAway })),
     };
   });
