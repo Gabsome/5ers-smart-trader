@@ -305,6 +305,12 @@ export const getDailyPick = createServerFn({ method: "POST" })
         : `Pending ${timing.order_type.toUpperCase().replace("_", " ")} at EMA20 — disciplined entry, no chasing.`);
       factors.push(`Lot ${lot} sized for ~$${actualRiskUsd} risk → $${data.targetUsd} target. ${lotCapped ? `(Capped by 5ers max-lot rule for $${balance.toFixed(0)} account.)` : "(Full risk allocated.)"}`);
 
+      // Learning: your own historical edge on this pair.
+      const stat = stats.byPair[pair];
+      if (stat && stat.trades >= 3) {
+        factors.push(`Your edge: ${stat.winRate}% win rate on ${pair} (${stat.trades} trades) — the engine weights this.`);
+      }
+
       // Strict A+ scoring — HTF confluence is mandatory
       const rsiSweet = setup.bias === "buy" ? 100 - Math.abs(setup.rsi - 55) : 100 - Math.abs(setup.rsi - 45);
       let score = Math.round(rsiSweet * 0.3);
@@ -313,6 +319,9 @@ export const getDailyPick = createServerFn({ method: "POST" })
       if (emaSeparation) score += 10;
       if (pullbackOk) score += 10;
       if (!rsiInZone) score -= 20;
+      // Adaptive: shift by your proven edge on this pair (smoothed, ±~12 pts).
+      if (stat && stat.trades >= 3) score += Math.round((stat.edge - 50) * 0.4);
+
 
       candidates.push({ pair, bias: setup.bias, entry, sl, tp, slPips, tpPips, lot, score, setup, htf: htfSetup, factors, timing, lotCapped, actualRiskUsd });
     }
