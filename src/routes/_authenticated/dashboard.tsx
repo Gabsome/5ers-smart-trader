@@ -74,7 +74,12 @@ function Dashboard() {
         <SmallStat label="Total P&L" value={`${data.totalPnl >= 0 ? "+" : ""}$${data.totalPnl.toFixed(2)}`} accent={data.totalPnl >= 0 ? "bull" : "bear"} />
       </div>
 
+      <NewsBanner pairs={PAIRS} />
+
       <DailyPick />
+
+      <OpenPositions />
+
 
       <div className="grid lg:grid-cols-3 gap-4">
         <div className="lg:col-span-2 rounded-xl border border-border bg-card p-5">
