@@ -186,15 +186,23 @@ export const getDailyPick = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("current_mode, watched_pairs, current_balance")
-      .eq("id", userId)
-      .maybeSingle();
+    const [{ data: profile }, { data: tradeRows }, newsEvents] = await Promise.all([
+      supabase
+        .from("profiles")
+        .select("current_mode, watched_pairs, current_balance")
+        .eq("id", userId)
+        .maybeSingle(),
+      supabase.from("trades").select("pair,status,pnl_usd").eq("user_id", userId),
+      fetchNewsEvents(),
+    ]);
 
     const pairs = ((profile?.watched_pairs as string[] | undefined) ?? PAIRS);
     const mode = profile?.current_mode ?? "challenge";
     const balance = Number(profile?.current_balance ?? 2500);
+
+    // Learning: per-pair edge from the trader's own closed-trade history.
+    const stats = summarizeTrades(tradeRows ?? []);
+    const NEWS_WINDOW_MIN = 30;
 
     // 5ers max-lot caps (conservative, keeps you compliant on any account size).
     // FX majors: 0.5 lot per $1k · JPY: 0.4 per $1k · Gold/XAU: 0.05 per $1k.
@@ -214,6 +222,9 @@ export const getDailyPick = createServerFn({ method: "POST" })
         return { pair, setup: detectSetup(ltfCandles), htf: detectSetup(htfCandles) };
       }),
     );
+
+    const newsBlocked: { pair: string; event: NewsEvent }[] = [];
+
 
     type Candidate = {
       pair: string; bias: "buy" | "sell"; entry: number; sl: number; tp: number;
