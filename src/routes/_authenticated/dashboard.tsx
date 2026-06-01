@@ -1,14 +1,19 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { LineChart, Line, ResponsiveContainer, XAxis, YAxis, Tooltip } from "recharts";
 import { Target, TrendingUp, TrendingDown, AlertTriangle, DollarSign } from "lucide-react";
 import { getDashboard } from "@/lib/trades.functions";
+import { reconcileTrades } from "@/lib/engine.functions";
+import { supabase } from "@/integrations/supabase/client";
 import { TradingViewChart } from "@/components/tradingview-chart";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DailyPick } from "@/components/daily-pick";
+import { OpenPositions } from "@/components/open-positions";
+import { NewsBanner } from "@/components/news-banner";
 import { LoadingScreen } from "@/components/loading-screen";
+
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
   component: Dashboard,
