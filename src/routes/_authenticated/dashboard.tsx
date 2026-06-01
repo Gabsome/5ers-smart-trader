@@ -24,14 +24,35 @@ const PAIRS = ["EUR/USD", "GBP/USD", "USD/JPY", "AUD/USD", "USD/CAD", "XAU/USD"]
 
 function Dashboard() {
   const fn = useServerFn(getDashboard);
+  const reconcile = useServerFn(reconcileTrades);
+  const qc = useQueryClient();
   const { data, isLoading } = useQuery({
     queryKey: ["dashboard"],
-    queryFn: () => fn(),
+    queryFn: async () => {
+      try { await reconcile(); } catch { /* non-blocking */ }
+      return fn();
+    },
     refetchInterval: 15_000,
   });
   const [pair, setPair] = useState("XAU/USD");
 
+  // Realtime: refresh instantly when trades or balance change anywhere.
+  useEffect(() => {
+    const ch = supabase
+      .channel("dashboard-live")
+      .on("postgres_changes", { event: "*", schema: "public", table: "trades" }, () => {
+        qc.invalidateQueries({ queryKey: ["dashboard"] });
+        qc.invalidateQueries({ queryKey: ["trades"] });
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "profiles" }, () => {
+        qc.invalidateQueries({ queryKey: ["dashboard"] });
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(ch); };
+  }, [qc]);
+
   if (isLoading || !data) return <LoadingScreen label="Loading your dashboard…" />;
+
 
   const goalColor = data.todayPnl >= data.dailyGoal ? "text-bull" : data.todayPnl >= 0 ? "text-foreground" : "text-bear";
   const ddPct = (data.drawdown.todayDd / data.drawdown.dailyLimit) * 100;
