@@ -65,12 +65,8 @@ export function OpenPositions() {
     onError: (e: any) => toast.error("Check failed", { description: e?.message }),
   });
 
-  const markFromFloating = (t: any) => {
-    const f = floating(t) ?? 0;
-    close.mutate({ id: t.id, status: f > 0 ? "win" : f < 0 ? "loss" : "breakeven", pnl: f });
-  };
-
   return (
+
     <div className="rounded-xl border border-border bg-card p-5">
       <div className="flex items-center justify-between mb-4">
         <div>
