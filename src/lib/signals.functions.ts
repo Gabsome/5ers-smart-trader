@@ -2,6 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { detectSetup, pipValue, suggestLot, type Candle } from "./indicators";
+import { fetchNewsEvents, newsGuard, summarizeTrades, type NewsEvent } from "./engine.server";
 
 const PAIRS = ["EUR/USD", "GBP/USD", "USD/JPY", "AUD/USD", "USD/CAD", "XAU/USD"];
 
