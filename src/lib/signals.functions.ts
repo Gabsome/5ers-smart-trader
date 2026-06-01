@@ -2,6 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { detectSetup, pipValue, suggestLot, type Candle } from "./indicators";
+import { fetchNewsEvents, newsGuard, summarizeTrades, type NewsEvent } from "./engine.server";
 
 const PAIRS = ["EUR/USD", "GBP/USD", "USD/JPY", "AUD/USD", "USD/CAD", "XAU/USD"];
 
@@ -185,15 +186,23 @@ export const getDailyPick = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("current_mode, watched_pairs, current_balance")
-      .eq("id", userId)
-      .maybeSingle();
+    const [{ data: profile }, { data: tradeRows }, newsEvents] = await Promise.all([
+      supabase
+        .from("profiles")
+        .select("current_mode, watched_pairs, current_balance")
+        .eq("id", userId)
+        .maybeSingle(),
+      supabase.from("trades").select("pair,status,pnl_usd").eq("user_id", userId),
+      fetchNewsEvents(),
+    ]);
 
     const pairs = ((profile?.watched_pairs as string[] | undefined) ?? PAIRS);
     const mode = profile?.current_mode ?? "challenge";
     const balance = Number(profile?.current_balance ?? 2500);
+
+    // Learning: per-pair edge from the trader's own closed-trade history.
+    const stats = summarizeTrades(tradeRows ?? []);
+    const NEWS_WINDOW_MIN = 30;
 
     // 5ers max-lot caps (conservative, keeps you compliant on any account size).
     // FX majors: 0.5 lot per $1k · JPY: 0.4 per $1k · Gold/XAU: 0.05 per $1k.
@@ -214,6 +223,9 @@ export const getDailyPick = createServerFn({ method: "POST" })
       }),
     );
 
+    const newsBlocked: { pair: string; event: NewsEvent }[] = [];
+
+
     type Candidate = {
       pair: string; bias: "buy" | "sell"; entry: number; sl: number; tp: number;
       slPips: number; tpPips: number; lot: number; score: number; setup: any; htf: any;
@@ -227,6 +239,10 @@ export const getDailyPick = createServerFn({ method: "POST" })
       if (r.status !== "fulfilled") continue;
       const { pair, setup, htf: htfSetup } = r.value;
       if (!setup || !setup.bias) continue;
+
+      // News guard — halt pairs with high-impact news inside the window.
+      const newsHit = newsGuard(pair, newsEvents, NEWS_WINDOW_MIN);
+      if (newsHit) { newsBlocked.push({ pair, event: newsHit }); continue; }
 
       const pip = pipValue(pair);
       const dpp = pair.includes("XAU") ? 10 : pair.includes("JPY") ? 9 : 10;
@@ -289,6 +305,12 @@ export const getDailyPick = createServerFn({ method: "POST" })
         : `Pending ${timing.order_type.toUpperCase().replace("_", " ")} at EMA20 — disciplined entry, no chasing.`);
       factors.push(`Lot ${lot} sized for ~$${actualRiskUsd} risk → $${data.targetUsd} target. ${lotCapped ? `(Capped by 5ers max-lot rule for $${balance.toFixed(0)} account.)` : "(Full risk allocated.)"}`);
 
+      // Learning: your own historical edge on this pair.
+      const stat = stats.byPair[pair];
+      if (stat && stat.trades >= 3) {
+        factors.push(`Your edge: ${stat.winRate}% win rate on ${pair} (${stat.trades} trades) — the engine weights this.`);
+      }
+
       // Strict A+ scoring — HTF confluence is mandatory
       const rsiSweet = setup.bias === "buy" ? 100 - Math.abs(setup.rsi - 55) : 100 - Math.abs(setup.rsi - 45);
       let score = Math.round(rsiSweet * 0.3);
@@ -297,6 +319,9 @@ export const getDailyPick = createServerFn({ method: "POST" })
       if (emaSeparation) score += 10;
       if (pullbackOk) score += 10;
       if (!rsiInZone) score -= 20;
+      // Adaptive: shift by your proven edge on this pair (smoothed, ±~12 pts).
+      if (stat && stat.trades >= 3) score += Math.round((stat.edge - 50) * 0.4);
+
 
       candidates.push({ pair, bias: setup.bias, entry, sl, tp, slPips, tpPips, lot, score, setup, htf: htfSetup, factors, timing, lotCapped, actualRiskUsd });
     }
@@ -305,14 +330,21 @@ export const getDailyPick = createServerFn({ method: "POST" })
     const MIN_SCORE = 75;
     const qualified = candidates.filter((c) => c.score >= MIN_SCORE);
     if (!qualified.length) {
+      const newsNote = newsBlocked.length
+        ? ` ⏸ Holding ${newsBlocked.map((n) => n.pair).join(", ")} — high-impact ${newsBlocked[0].event.currency} news (${newsBlocked[0].event.title}) ${newsBlocked[0].event.minutesAway >= 0 ? `in ${newsBlocked[0].event.minutesAway} min` : `${Math.abs(newsBlocked[0].event.minutesAway)} min ago`}. Re-scan once it settles.`
+        : "";
       return {
         pick: null,
-        reason: candidates.length
+        reason: (candidates.length
           ? `Scanned ${candidates.length} setup(s) — none cleared the ${MIN_SCORE}-pt quality bar. Discipline > activity. Sit out.`
-          : "No clean setup on watched pairs right now. Wait for price action.",
+          : newsBlocked.length
+            ? "All clean setups are inside a news blackout right now."
+            : "No clean setup on watched pairs right now. Wait for price action.") + newsNote,
         candidates: candidates.length,
+        news_halt: newsBlocked.map((n) => ({ pair: n.pair, title: n.event.title, currency: n.event.currency, minutesAway: n.event.minutesAway })),
       };
     }
+
 
     qualified.sort((a, b) => b.score - a.score);
     const best = qualified[0];
@@ -375,5 +407,6 @@ export const getDailyPick = createServerFn({ method: "POST" })
       },
       candidates: candidates.length,
       qualified: qualified.length,
+      news_halt: newsBlocked.map((n) => ({ pair: n.pair, title: n.event.title, currency: n.event.currency, minutesAway: n.event.minutesAway })),
     };
   });

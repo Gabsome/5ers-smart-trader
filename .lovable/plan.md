@@ -1,92 +1,53 @@
+## Goal
 
-# 5ers Challenge — by Gabsome-X
+Turn the dashboard into a live, self-updating trading cockpit: open trades auto-resolve as win/loss against live price (or you mark them manually), balance updates instantly, the pick engine learns from your past results and respects scheduled news, and everything refreshes in real time. Also clean up the 10 stale open trades.
 
-A smart dashboard to help you pass the 5ers $2,500 2-Step Challenge, hit a $20/day target, and continue tracking once funded. AI-assisted entry signals on majors + XAUUSD, live TradingView charts, a manual trade journal, and per-mode tracking (Challenge / Verification / Funded / Demo-Test).
+## 1. Win/Loss tracking (manual + auto) with live balance
 
-## What you'll get
+- **Manual close** (already partly exists in the journal): surface quick **Win / Loss / Breakeven** buttons on every open trade, both in the journal and on a new dashboard "Open positions" panel. Closing recalculates P&L from entry/SL/TP and lot size, then updates `current_balance` immediately.
+- **Auto close**: a new server function `reconcileTrades` pulls the latest price for each open trade's pair (TwelveData), and:
+  - if price crossed **TP** in the trade direction → mark `win`, P&L = +target,
+  - if price crossed **SL** → mark `loss`, P&L = -risk,
+  - sets `closed_at`, updates balance.
+  P&L is computed with the existing pip-value math so the $100/$20 profile stays exact.
+- Auto-reconcile runs two ways: (a) on the client via the dashboard's polling loop, and (b) optionally a `pg_cron` job hitting a public endpoint so trades close even when the app is closed.
 
-### 1. Landing + Google login
-- Public landing page explaining the tool, branded "5ers Challenge — by Gabsome-X".
-- Google sign-in (via Lovable Cloud auth).
-- After login, redirect to `/dashboard`.
+## 2. Real-time auto-update
 
-### 2. Account mode switcher
-A persistent selector at the top of the app where you tell the AI what account you're trading:
-- **Challenge (Step 1)** — $2,500, 8% target, 5% daily DD, 10% max DD.
-- **Verification (Step 2)** — 5% target, same DD rules.
-- **Funded (Live)** — conservative mode, tighter risk.
-- **Demo / Testing** — AI is more experimental, no risk caps.
+- Dashboard already polls every 15s; extend the same React Query polling to the new open-positions panel and journal, and trigger `reconcileTrades` inside the dashboard refetch so balance, P&L, win rate, and equity curve all move on their own.
+- Enable Supabase Realtime on `trades` + `profiles` so a close from any device instantly invalidates the dashboard cache (no wait for the next poll).
 
-The selected mode is saved per user and feeds into the AI prompt + the risk-guard math.
+## 3. AI that learns (from your results + adaptive scoring)
 
-### 3. Live TradingView charts
-- Embedded TradingView Advanced Chart widget.
-- Symbol switcher for EURUSD, GBPUSD, USDJPY, AUDUSD, USDCAD, XAUUSD.
-- Free, no API key needed.
+- New server function `getPerformanceStats`: aggregates your closed trades into per-pair and per-setup win rate, avg R, and sample size.
+- The Daily Pick engine (`getDailyPick`) consumes these stats:
+  - **Pick selection**: bias the final choice toward pairs/setups where you actually win (weighted by sample size so a 1-trade fluke doesn't dominate).
+  - **Adaptive scoring**: nudge the quality-score thresholds up for pairs you lose on and down slightly for proven winners, while keeping the hard A+ floor.
+- The pick's "Why this trade will work" list gains a line like *"Your edge: 71% win rate on XAU/USD pullbacks (14 trades)"* so the learning is visible and auditable.
 
-### 4. Real-time signal engine
-Hybrid approach (your pick):
-- **Indicator layer** — pulls 1m/5m/15m/1h candles from TwelveData for the 6 pairs, computes RSI, EMA(20/50), ATR, recent swing high/low, and detects setups (pullback to EMA, RSI divergence, breakout of structure).
-- **AI layer** — Lovable AI (Gemini) receives the detected setup + recent price action + your current mode + remaining daily P&L room, and returns: direction, entry, SL, TP1/TP2, lot size suggestion for $2.5k, confidence %, and a one-line rationale.
-- Auto-refresh every 60s; signals appear in a live feed with timestamps.
+## 4. News awareness / halt
 
-### 5. Trade journal (manual logging)
-- Log each trade you took on 5ers: pair, direction, entry, SL, TP, lot, result (pips + $), screenshot URL, notes.
-- Quick "log from signal" button pre-fills the form from any AI signal.
-- Stored in Lovable Cloud.
+- Pull a **free economic calendar** (Forex Factory weekly JSON feed — no API key required) in a new `getNews` server function, filtered to high-impact events for the currencies you trade (USD, EUR, GBP, JPY, AUD, CAD, XAU/gold).
+- A news-guard helper checks: is a high-impact event within a configurable window (default ±30 min) for a candidate's currencies?
+  - If yes, the engine **halts** that pair: the Daily Pick refuses it and shows *"⏸ Holding — high-impact USD news (NFP) in 18 min. Re-scan after the dust settles."*
+  - A dashboard **News banner** lists today's upcoming high-impact events with a countdown, and flags when the engine is in "news halt" mode.
+- If the free feed is unavailable, the engine degrades gracefully (warns rather than crashes) and you can still trade manually.
 
-### 6. Real-time tracking
-Live KPIs computed from your journal:
-- Today's P&L vs $20 daily goal (progress bar).
-- Account balance & equity curve.
-- Distance to 8% target (Step 1) or 5% (Step 2).
-- Distance to daily DD limit and max DD — turns red when approaching.
-- Win rate, avg R, profit factor, best/worst pair.
-- Streaks (consecutive wins/losses) — AI gets more conservative after 2 losses.
+## 5. Clean up the 10 stale open trades
 
-### 7. Pair scanner
-Always-on grid showing each watched pair with: current price, ATR, RSI, trend bias, "setup forming / active signal / no setup" badge.
+- Add a **"Review open trades"** view (dashboard panel + journal) listing all 10 with entry, current price, and floating P&L.
+- Per-trade actions: mark Win/Loss/Breakeven, or **Delete** (for test rows). Bulk "Close all at breakeven" to reset quickly so balance and counts are accurate again.
+- After cleanup the KPI cards (Open trades, Win rate, Total P&L) reflect reality.
 
-## Technical details
+## Technical notes
 
-**Stack**: TanStack Start (existing), Lovable Cloud (Postgres + Auth), Lovable AI Gateway (Gemini), TwelveData REST API, TradingView embedded widget, Recharts for equity curve, shadcn/ui + Tailwind.
+- **No schema change needed** for the core flow — `trades` already has `status`, `pnl_usd`, `closed_at`; `profiles` has `current_balance`. Optional: a small `news_window_minutes` / `news_guard_enabled` column on `profiles` for the configurable halt window (via migration, with GRANTs).
+- New server functions in `src/lib/`: `reconcileTrades`, `getPerformanceStats`, `getNews` (all `requireSupabaseAuth`). News/cron-friendly variant under `src/routes/api/public/` for the optional `pg_cron` auto-close.
+- Edits: `getDailyPick` in `signals.functions.ts` (consume stats + news guard), `dashboard.tsx` (open-positions panel + news banner + reconcile-on-refetch), `journal.tsx` (win/loss/delete actions), `daily-pick.tsx` (edge line + news-halt state).
+- Live price for reconciliation reuses the existing TwelveData `fetchCandles`/quote path; mind the free-tier rate limit by batching pair lookups.
+- All new UI uses existing semantic tokens (bull/bear/primary) — no new color literals.
 
-**Cloud tables**:
-- `profiles` (id, email, display_name, current_mode, starting_balance)
-- `accounts` (id, user_id, mode, starting_balance, current_balance, started_at, is_active)
-- `trades` (id, account_id, pair, direction, entry, sl, tp, lot, pips, pnl_usd, opened_at, closed_at, notes, signal_id nullable)
-- `signals` (id, pair, timeframe, direction, entry, sl, tp1, tp2, confidence, rationale, mode_context, created_at)
-- `settings` (user_id, risk_per_trade_pct, daily_goal_usd, watched_pairs[])
+## Out of scope (unless you ask)
 
-RLS: all tables scoped to `auth.uid()`.
-
-**Server functions** (`createServerFn`):
-- `getSignals` — runs indicator scan + AI synthesis, writes to `signals`.
-- `logTrade`, `updateTrade`, `deleteTrade`.
-- `getDashboardStats` — aggregates today's P&L, equity curve, DD distances.
-- `getQuote(symbol, interval)` — proxies TwelveData (keeps key server-side).
-
-**Secrets needed**: `TWELVEDATA_API_KEY` (you'll provide after enabling Cloud).
-
-**Routes**:
-- `/` — landing
-- `/login` — Google sign-in
-- `/dashboard` — overview (KPIs, equity curve, today's signals)
-- `/signals` — live signal feed + chart
-- `/journal` — trade log + add/edit
-- `/settings` — mode, starting balance, risk %, watched pairs
-
-## Important honesty note
-
-This site **does not place trades on your 5ers MT5 account** — brokers don't allow that from a website. It gives you AI signals + risk math, you click the trade in 5ers, then log the result here so tracking stays real-time. The $20/day target is a planning aid, not a guarantee — markets don't promise profits.
-
-## Build order
-
-1. Enable Lovable Cloud + create DB schema + Google auth.
-2. Landing page + login flow + branded shell.
-3. Settings + account mode switcher.
-4. TwelveData proxy + indicator engine + AI signal synthesis.
-5. Dashboard KPIs + equity curve + TradingView chart.
-6. Trade journal CRUD.
-7. Signal feed + pair scanner.
-8. Polish, dark theme, mobile layout.
+- Broker auto-execution (still a manual/journal workflow).
+- Paid news feeds with second-level precision.

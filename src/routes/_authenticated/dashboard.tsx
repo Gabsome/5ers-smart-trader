@@ -1,14 +1,19 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { LineChart, Line, ResponsiveContainer, XAxis, YAxis, Tooltip } from "recharts";
 import { Target, TrendingUp, TrendingDown, AlertTriangle, DollarSign } from "lucide-react";
 import { getDashboard } from "@/lib/trades.functions";
+import { reconcileTrades } from "@/lib/engine.functions";
+import { supabase } from "@/integrations/supabase/client";
 import { TradingViewChart } from "@/components/tradingview-chart";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DailyPick } from "@/components/daily-pick";
+import { OpenPositions } from "@/components/open-positions";
+import { NewsBanner } from "@/components/news-banner";
 import { LoadingScreen } from "@/components/loading-screen";
+
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
   component: Dashboard,
@@ -19,14 +24,35 @@ const PAIRS = ["EUR/USD", "GBP/USD", "USD/JPY", "AUD/USD", "USD/CAD", "XAU/USD"]
 
 function Dashboard() {
   const fn = useServerFn(getDashboard);
+  const reconcile = useServerFn(reconcileTrades);
+  const qc = useQueryClient();
   const { data, isLoading } = useQuery({
     queryKey: ["dashboard"],
-    queryFn: () => fn(),
+    queryFn: async () => {
+      try { await reconcile(); } catch { /* non-blocking */ }
+      return fn();
+    },
     refetchInterval: 15_000,
   });
   const [pair, setPair] = useState("XAU/USD");
 
+  // Realtime: refresh instantly when trades or balance change anywhere.
+  useEffect(() => {
+    const ch = supabase
+      .channel("dashboard-live")
+      .on("postgres_changes", { event: "*", schema: "public", table: "trades" }, () => {
+        qc.invalidateQueries({ queryKey: ["dashboard"] });
+        qc.invalidateQueries({ queryKey: ["trades"] });
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "profiles" }, () => {
+        qc.invalidateQueries({ queryKey: ["dashboard"] });
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(ch); };
+  }, [qc]);
+
   if (isLoading || !data) return <LoadingScreen label="Loading your dashboard…" />;
+
 
   const goalColor = data.todayPnl >= data.dailyGoal ? "text-bull" : data.todayPnl >= 0 ? "text-foreground" : "text-bear";
   const ddPct = (data.drawdown.todayDd / data.drawdown.dailyLimit) * 100;
@@ -48,7 +74,12 @@ function Dashboard() {
         <SmallStat label="Total P&L" value={`${data.totalPnl >= 0 ? "+" : ""}$${data.totalPnl.toFixed(2)}`} accent={data.totalPnl >= 0 ? "bull" : "bear"} />
       </div>
 
+      <NewsBanner pairs={PAIRS} />
+
       <DailyPick />
+
+      <OpenPositions />
+
 
       <div className="grid lg:grid-cols-3 gap-4">
         <div className="lg:col-span-2 rounded-xl border border-border bg-card p-5">
