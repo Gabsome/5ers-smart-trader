@@ -240,6 +240,10 @@ export const getDailyPick = createServerFn({ method: "POST" })
       const { pair, setup, htf: htfSetup } = r.value;
       if (!setup || !setup.bias) continue;
 
+      // News guard — halt pairs with high-impact news inside the window.
+      const newsHit = newsGuard(pair, newsEvents, NEWS_WINDOW_MIN);
+      if (newsHit) { newsBlocked.push({ pair, event: newsHit }); continue; }
+
       const pip = pipValue(pair);
       const dpp = pair.includes("XAU") ? 10 : pair.includes("JPY") ? 9 : 10;
       const slDistance = setup.atr * 1.2;
