@@ -330,14 +330,21 @@ export const getDailyPick = createServerFn({ method: "POST" })
     const MIN_SCORE = 75;
     const qualified = candidates.filter((c) => c.score >= MIN_SCORE);
     if (!qualified.length) {
+      const newsNote = newsBlocked.length
+        ? ` ⏸ Holding ${newsBlocked.map((n) => n.pair).join(", ")} — high-impact ${newsBlocked[0].event.currency} news (${newsBlocked[0].event.title}) ${newsBlocked[0].event.minutesAway >= 0 ? `in ${newsBlocked[0].event.minutesAway} min` : `${Math.abs(newsBlocked[0].event.minutesAway)} min ago`}. Re-scan once it settles.`
+        : "";
       return {
         pick: null,
-        reason: candidates.length
+        reason: (candidates.length
           ? `Scanned ${candidates.length} setup(s) — none cleared the ${MIN_SCORE}-pt quality bar. Discipline > activity. Sit out.`
-          : "No clean setup on watched pairs right now. Wait for price action.",
+          : newsBlocked.length
+            ? "All clean setups are inside a news blackout right now."
+            : "No clean setup on watched pairs right now. Wait for price action.") + newsNote,
         candidates: candidates.length,
+        news_halt: newsBlocked.map((n) => ({ pair: n.pair, title: n.event.title, currency: n.event.currency, minutesAway: n.event.minutesAway })),
       };
     }
+
 
     qualified.sort((a, b) => b.score - a.score);
     const best = qualified[0];
