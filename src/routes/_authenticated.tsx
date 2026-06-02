@@ -28,6 +28,7 @@ function AuthLayout() {
     { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
     { to: "/signals", label: "Signals", icon: Radio },
     { to: "/journal", label: "Journal", icon: BookOpen },
+    { to: "/docs", label: "Guide", icon: HelpCircle },
     { to: "/settings", label: "Settings", icon: Settings },
   ] as const;
 
