@@ -116,12 +116,14 @@ export const getDashboard = createServerFn({ method: "GET" })
       equity.push({ t: t.closed_at ?? t.opened_at, v: eq });
     }
 
-    // Target distances
-    const targetPct = mode === "challenge" ? 8 : mode === "verification" ? 5 : 0;
-    const targetUsd = (startingBalance * targetPct) / 100;
+    // Achieved profit is the single source of truth: balance growth = realized P&L.
+    const achieved = currentBalance - startingBalance;
+    // Target distances — user-set dollar target drives everything.
+    const targetUsd = profitTargetUsd;
+    const targetPct = startingBalance > 0 ? (targetUsd / startingBalance) * 100 : 0;
     const dailyDdLimit = startingBalance * 0.05;
     const maxDdLimit = startingBalance * 0.10;
-    const ddFromStart = startingBalance - currentBalance;
+    const ddFromStart = Math.max(0, startingBalance - currentBalance);
 
     return {
       profile,
@@ -131,12 +133,17 @@ export const getDashboard = createServerFn({ method: "GET" })
       todayPnl,
       dailyGoal,
       dailyGoalPct: Math.max(0, Math.min(100, (todayPnl / dailyGoal) * 100)),
-      totalPnl: gross,
+      totalPnl: achieved,
       winRate,
       tradesCount: closed.length,
       openTrades: all.filter((t) => t.status === "open").length,
       equity,
-      target: { pct: targetPct, usd: targetUsd, progress: Math.max(0, (gross / Math.max(1, targetUsd)) * 100) },
+      target: {
+        pct: targetPct,
+        usd: targetUsd,
+        achieved,
+        progress: Math.max(0, (achieved / Math.max(1, targetUsd)) * 100),
+      },
       drawdown: {
         dailyLimit: dailyDdLimit,
         maxLimit: maxDdLimit,
