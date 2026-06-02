@@ -106,7 +106,7 @@ export const getDashboard = createServerFn({ method: "GET" })
     const closed = all.filter((t) => t.status !== "open");
     const wins = closed.filter((t) => t.status === "win").length;
     const winRate = closed.length ? (wins / closed.length) * 100 : 0;
-    const gross = closed.reduce((s, t) => s + Number(t.pnl_usd ?? 0), 0);
+    
 
     // Equity curve
     let eq = startingBalance;
