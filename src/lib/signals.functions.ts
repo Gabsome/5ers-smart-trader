@@ -311,7 +311,7 @@ export const getDailyPick = createServerFn({ method: "POST" })
       if (emaSeparation) factors.push(`EMA20/EMA50 cleanly separated (>0.3·ATR) — confirmed trend, not range chop.`);
       if (pullbackOk) factors.push(`Price pulled back to EMA20 (dynamic S/R) instead of chasing extension.`);
       if (rsiInZone) factors.push(`RSI ${setup.rsi.toFixed(0)} in healthy continuation zone (not overbought/oversold).`);
-      factors.push(`ATR-based SL (${slPips.toFixed(0)} pips) respects current volatility — no arbitrary stops.`);
+      factors.push(`SL (${slPips.toFixed(0)} pips) sits beyond the recent ${setup.bias === "buy" ? "swing low" : "swing high"} +0.5·ATR — price must break market structure to hit it, so it's unlikely to trigger before TP.`);
       factors.push(enterNow
         ? `Price is at the level — market entry valid right now.`
         : `Pending ${timing.order_type.toUpperCase().replace("_", " ")} at EMA20 — disciplined entry, no chasing.`);
