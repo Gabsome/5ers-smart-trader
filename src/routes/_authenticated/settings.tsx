@@ -37,6 +37,7 @@ function Settings() {
         starting_balance: Number(form.starting_balance),
         current_balance: Number(form.current_balance),
         daily_goal_usd: Number(form.daily_goal_usd),
+        profit_target_usd: Number(form.profit_target_usd),
         risk_per_trade_pct: Number(form.risk_per_trade_pct),
         display_name: form.display_name,
       },
