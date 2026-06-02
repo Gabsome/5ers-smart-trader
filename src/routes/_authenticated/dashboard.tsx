@@ -63,7 +63,7 @@ function Dashboard() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <KpiCard icon={<DollarSign />} label="Balance" value={`$${data.currentBalance.toFixed(2)}`} sub={`Start $${data.startingBalance}`} />
         <KpiCard icon={<Target />} label="Today P&L" value={<span className={goalColor}>{data.todayPnl >= 0 ? "+" : ""}${data.todayPnl.toFixed(2)}</span>} sub={`Goal $${data.dailyGoal} · ${data.dailyGoalPct.toFixed(0)}%`} progress={data.dailyGoalPct} />
-        <KpiCard icon={<TrendingUp />} label={`Target ${data.target.pct}%`} value={`$${data.target.usd.toFixed(0)}`} sub={`${Math.max(0, data.target.progress).toFixed(0)}% there`} progress={Math.max(0, Math.min(100, data.target.progress))} />
+        <KpiCard icon={<TrendingUp />} label={`Profit target (${data.target.pct.toFixed(0)}%)`} value={`$${data.target.achieved.toFixed(0)} / $${data.target.usd.toFixed(0)}`} sub={`${Math.max(0, data.target.progress).toFixed(0)}% there`} progress={Math.max(0, Math.min(100, data.target.progress))} />
         <KpiCard icon={ddDanger ? <AlertTriangle /> : <TrendingDown />} label="Daily DD used" value={`$${data.drawdown.todayDd.toFixed(2)}`} sub={`Limit $${data.drawdown.dailyLimit.toFixed(0)}`} progress={Math.min(100, ddPct)} danger={ddDanger} />
       </div>
 

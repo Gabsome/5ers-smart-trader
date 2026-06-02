@@ -48,6 +48,11 @@ export function detectSetup(candles: Candle[]) {
   const distToEma = Math.abs(last.c - ema20.at(-1)!);
   const pullback = distToEma < a * 0.6;
 
+  // Recent market structure — used to anchor a safe stop-loss beyond swing points.
+  const lookback = candles.slice(-20);
+  const swingHigh = Math.max(...lookback.map((c) => c.h));
+  const swingLow = Math.min(...lookback.map((c) => c.l));
+
   let bias: "buy" | "sell" | null = null;
   if (trend === "up" && pullback && r > 40 && r < 65) bias = "buy";
   if (trend === "down" && pullback && r < 60 && r > 35) bias = "sell";
@@ -59,6 +64,8 @@ export function detectSetup(candles: Candle[]) {
     ema20: ema20.at(-1)!,
     ema50: ema50.at(-1)!,
     lastClose: last.c,
+    swingHigh,
+    swingLow,
     bias,
   };
 }

@@ -23,6 +23,7 @@ export type Database = {
           display_name: string | null
           email: string | null
           id: string
+          profit_target_usd: number
           risk_per_trade_pct: number
           starting_balance: number
           updated_at: string
@@ -36,6 +37,7 @@ export type Database = {
           display_name?: string | null
           email?: string | null
           id: string
+          profit_target_usd?: number
           risk_per_trade_pct?: number
           starting_balance?: number
           updated_at?: string
@@ -49,6 +51,7 @@ export type Database = {
           display_name?: string | null
           email?: string | null
           id?: string
+          profit_target_usd?: number
           risk_per_trade_pct?: number
           starting_balance?: number
           updated_at?: string

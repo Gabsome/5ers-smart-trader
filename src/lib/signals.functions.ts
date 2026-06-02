@@ -246,11 +246,28 @@ export const getDailyPick = createServerFn({ method: "POST" })
 
       const pip = pipValue(pair);
       const dpp = pair.includes("XAU") ? 10 : pair.includes("JPY") ? 9 : 10;
-      const slDistance = setup.atr * 1.2;
+
+      // Entry timing — NOW vs WAIT. Ideal pullback zone = EMA20.
+      const idealEntry = setup.ema20;
+      const distToIdeal = Math.abs(setup.lastClose - idealEntry);
+      const enterNow = distToIdeal <= setup.atr * 0.25;
+      const entry = enterNow ? setup.lastClose : idealEntry;
+
+      // Structure-aware stop: anchor it BEYOND the most recent swing (+0.5·ATR
+      // buffer) so price must genuinely break structure to hit it — far less
+      // likely to be stopped out before TP. Never tighter than 1.2·ATR.
+      const buffer = setup.atr * 0.5;
+      const structureStop = setup.bias === "buy"
+        ? setup.swingLow - buffer
+        : setup.swingHigh + buffer;
+      const minDistance = setup.atr * 1.2;
+      let slDistance = Math.abs(entry - structureStop);
+      if (!isFinite(slDistance) || slDistance < minDistance) slDistance = minDistance;
       const slPips = slDistance / pip;
       if (slPips <= 0) continue;
 
-      // Lot sizing: target $riskUsd, but cap by 5ers max-lot rule
+      // Lot sizing: respect the trader's $risk parameter, capped by 5ers max-lot.
+      // A wider (safer) stop simply means a smaller lot — risk stays controlled.
       const rawLot = data.riskUsd / (slPips * dpp);
       const maxLot = maxLotFor(pair);
       let lot = Math.round(Math.min(rawLot, maxLot) * 100) / 100;
@@ -260,11 +277,6 @@ export const getDailyPick = createServerFn({ method: "POST" })
       const tpPips = data.targetUsd / (lot * dpp);
       const tpDistance = tpPips * pip;
 
-      // Entry timing — NOW vs WAIT. Ideal pullback zone = EMA20.
-      const idealEntry = setup.ema20;
-      const distToIdeal = Math.abs(setup.lastClose - idealEntry);
-      const enterNow = distToIdeal <= setup.atr * 0.25;
-      const entry = enterNow ? setup.lastClose : idealEntry;
       const sl = setup.bias === "buy" ? entry - slDistance : entry + slDistance;
       const tp = setup.bias === "buy" ? entry + tpDistance : entry - tpDistance;
       const fmtPrice = (n: number) => n.toFixed(pair.includes("JPY") ? 3 : pair.includes("XAU") ? 2 : 5);
@@ -299,7 +311,7 @@ export const getDailyPick = createServerFn({ method: "POST" })
       if (emaSeparation) factors.push(`EMA20/EMA50 cleanly separated (>0.3·ATR) — confirmed trend, not range chop.`);
       if (pullbackOk) factors.push(`Price pulled back to EMA20 (dynamic S/R) instead of chasing extension.`);
       if (rsiInZone) factors.push(`RSI ${setup.rsi.toFixed(0)} in healthy continuation zone (not overbought/oversold).`);
-      factors.push(`ATR-based SL (${slPips.toFixed(0)} pips) respects current volatility — no arbitrary stops.`);
+      factors.push(`SL (${slPips.toFixed(0)} pips) sits beyond the recent ${setup.bias === "buy" ? "swing low" : "swing high"} +0.5·ATR — price must break market structure to hit it, so it's unlikely to trigger before TP.`);
       factors.push(enterNow
         ? `Price is at the level — market entry valid right now.`
         : `Pending ${timing.order_type.toUpperCase().replace("_", " ")} at EMA20 — disciplined entry, no chasing.`);

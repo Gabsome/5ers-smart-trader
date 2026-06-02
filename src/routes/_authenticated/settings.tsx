@@ -19,12 +19,13 @@ function Settings() {
   const qc = useQueryClient();
   const { data: profile } = useQuery({ queryKey: ["profile"], queryFn: () => gFn() });
 
-  const [form, setForm] = useState({ starting_balance: "2500", current_balance: "2500", daily_goal_usd: "20", risk_per_trade_pct: "0.5", display_name: "" });
+  const [form, setForm] = useState({ starting_balance: "2500", current_balance: "2500", daily_goal_usd: "20", profit_target_usd: "200", risk_per_trade_pct: "0.5", display_name: "" });
   useEffect(() => {
     if (profile) setForm({
       starting_balance: String(profile.starting_balance),
       current_balance: String(profile.current_balance),
       daily_goal_usd: String(profile.daily_goal_usd),
+      profit_target_usd: String((profile as any).profit_target_usd ?? 200),
       risk_per_trade_pct: String(profile.risk_per_trade_pct),
       display_name: profile.display_name ?? "",
     });
@@ -36,6 +37,7 @@ function Settings() {
         starting_balance: Number(form.starting_balance),
         current_balance: Number(form.current_balance),
         daily_goal_usd: Number(form.daily_goal_usd),
+        profit_target_usd: Number(form.profit_target_usd),
         risk_per_trade_pct: Number(form.risk_per_trade_pct),
         display_name: form.display_name,
       },
@@ -56,6 +58,7 @@ function Settings() {
           <Field label="Starting balance ($)"><Input type="number" value={form.starting_balance} onChange={(e) => setForm({ ...form, starting_balance: e.target.value })} /></Field>
           <Field label="Current balance ($)"><Input type="number" value={form.current_balance} onChange={(e) => setForm({ ...form, current_balance: e.target.value })} /></Field>
           <Field label="Daily goal ($)"><Input type="number" value={form.daily_goal_usd} onChange={(e) => setForm({ ...form, daily_goal_usd: e.target.value })} /></Field>
+          <Field label="Profit target ($)"><Input type="number" value={form.profit_target_usd} onChange={(e) => setForm({ ...form, profit_target_usd: e.target.value })} /></Field>
           <Field label="Risk per trade (%)"><Input type="number" step="0.1" value={form.risk_per_trade_pct} onChange={(e) => setForm({ ...form, risk_per_trade_pct: e.target.value })} /></Field>
         </div>
         <Button onClick={() => save.mutate()} disabled={save.isPending}>Save changes</Button>
@@ -67,6 +70,10 @@ function Settings() {
           The mode switcher (top-right) tells the AI whether you're on a Challenge, Verification, Funded, or Demo account.
           On Challenge/Verification, signals are filtered conservatively to respect 5%/10% drawdown rules.
           On Funded mode, lot suggestions get even tighter. Demo mode lets the AI be more experimental.
+        </p>
+        <p className="mt-3">
+          Set your <strong className="text-foreground">Profit target ($)</strong> to the amount you want to reach — the
+          dashboard target card auto-tracks your balance growth toward it. See the <strong className="text-foreground">Guide</strong> tab for the full how-to and required documents.
         </p>
         <p className="mt-3">
           This dashboard does <strong className="text-foreground">not</strong> place trades on 5ers — log entries here after you execute them on the broker so tracking stays accurate.

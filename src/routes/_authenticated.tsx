@@ -1,6 +1,6 @@
 import { createFileRoute, Link, Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useEffect } from "react";
-import { LayoutDashboard, Radio, BookOpen, Settings, LogOut } from "lucide-react";
+import { LayoutDashboard, Radio, BookOpen, Settings, LogOut, HelpCircle } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
 import { ModeSwitcher } from "@/components/mode-switcher";
@@ -28,6 +28,7 @@ function AuthLayout() {
     { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
     { to: "/signals", label: "Signals", icon: Radio },
     { to: "/journal", label: "Journal", icon: BookOpen },
+    { to: "/docs", label: "Guide", icon: HelpCircle },
     { to: "/settings", label: "Settings", icon: Settings },
   ] as const;
 
