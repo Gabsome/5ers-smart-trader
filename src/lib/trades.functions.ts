@@ -97,6 +97,7 @@ export const getDashboard = createServerFn({ method: "GET" })
     const currentBalance = Number(profile?.current_balance ?? startingBalance);
     const mode = profile?.current_mode ?? "challenge";
     const dailyGoal = Number(profile?.daily_goal_usd ?? 20);
+    const profitTargetUsd = Number(profile?.profit_target_usd ?? 200);
 
     const today = new Date(); today.setHours(0, 0, 0, 0);
     const todayTrades = all.filter((t) => new Date(t.opened_at) >= today && t.status !== "open");
