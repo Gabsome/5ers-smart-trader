@@ -67,13 +67,13 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "5ers Challenge — by Gabsome-X" },
+      { title: "7star Challenge — by Gabsome-X" },
       {
         name: "description",
         content:
-          "Smart AI-assisted dashboard to pass the 5ers $2.5k 2-step challenge. Real-time entry signals on majors + XAUUSD, live TradingView charts, risk-aware journaling.",
+          "Smart AI-assisted dashboard to pass the high-stakes 2-step challenge. Real-time entry signals on majors + XAUUSD, live TradingView charts, risk-aware journaling.",
       },
-      { property: "og:title", content: "5ers Challenge — by Gabsome-X" },
+      { property: "og:title", content: "7star Challenge — by Gabsome-X" },
       { property: "og:description", content: "AI signals, live charts, real-time tracking." },
       { property: "og:type", content: "website" },
     ],

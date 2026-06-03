@@ -62,7 +62,7 @@ export function Logo({ size = 40, animated = true, withText = false }: Props) {
       </Mark>
       {withText && (
         <div className="leading-tight">
-          <div className="font-bold tracking-tight">5ers Challenge</div>
+          <div className="font-bold tracking-tight">7star Challenge</div>
           <div className="text-[10px] uppercase tracking-widest text-muted-foreground">by Gabsome-X</div>
         </div>
       )}

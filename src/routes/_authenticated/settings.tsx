@@ -10,7 +10,7 @@ import { getProfile, updateProfile } from "@/lib/trades.functions";
 
 export const Route = createFileRoute("/_authenticated/settings")({
   component: Settings,
-  head: () => ({ meta: [{ title: "Settings — 5ers Challenge" }] }),
+  head: () => ({ meta: [{ title: "Settings — 7star Challenge" }] }),
 });
 
 function Settings() {

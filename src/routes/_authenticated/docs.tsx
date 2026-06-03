@@ -13,7 +13,7 @@ export const Route = createFileRoute("/_authenticated/docs")({
   component: Docs,
   head: () => ({
     meta: [
-      { title: "User Guide & Documentation — 5ers Challenge" },
+      { title: "User Guide & Documentation — 7star Challenge" },
       {
         name: "description",
         content:

@@ -38,7 +38,7 @@ function AuthLayout() {
         <div className="container mx-auto px-4 lg:px-6 py-3 flex items-center justify-between gap-4">
           <Link to="/dashboard" className="flex items-center gap-2 font-bold shrink-0">
             <Logo size={32} />
-            <span className="hidden sm:inline">5ers Challenge <span className="text-muted-foreground font-medium text-sm">· Gabsome-X</span></span>
+            <span className="hidden sm:inline">7star Challenge <span className="text-muted-foreground font-medium text-sm">· Gabsome-X</span></span>
           </Link>
           <nav className="flex items-center gap-1 overflow-x-auto">
             {navItems.map((it) => {

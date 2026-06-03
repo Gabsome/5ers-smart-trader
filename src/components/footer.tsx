@@ -9,7 +9,7 @@ export function Footer() {
           <ShieldCheck className="size-3.5 text-primary" />
           <span>
             © {year} <span className="text-foreground font-semibold">Gabriel Maina Mwangi</span>, Nakuru, Kenya. All rights reserved.
-            <span className="hidden sm:inline"> · 5ers Challenge by Gabsome-X.</span>
+            <span className="hidden sm:inline"> · 7star Challenge by Gabsome-X.</span>
           </span>
         </div>
         <div className="text-center md:text-right max-w-xl">

@@ -8,7 +8,7 @@ import { Logo } from "@/components/logo";
 
 export const Route = createFileRoute("/login")({
   component: LoginPage,
-  head: () => ({ meta: [{ title: "Sign in — 5ers Challenge" }] }),
+  head: () => ({ meta: [{ title: "Sign in — 7star Challenge" }] }),
 });
 
 function LoginPage() {
@@ -43,7 +43,7 @@ function LoginPage() {
         <div className="flex justify-center mb-4">
           <Logo size={64} />
         </div>
-        <h1 className="text-2xl font-bold">5ers Challenge</h1>
+        <h1 className="text-2xl font-bold">7star Challenge</h1>
         <p className="text-sm text-muted-foreground mt-1">by Gabsome-X</p>
         <p className="mt-6 text-sm text-muted-foreground">
           Sign in to access your AI trading dashboard.

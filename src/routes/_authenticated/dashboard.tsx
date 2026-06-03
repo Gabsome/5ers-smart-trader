@@ -17,7 +17,7 @@ import { LoadingScreen } from "@/components/loading-screen";
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
   component: Dashboard,
-  head: () => ({ meta: [{ title: "Dashboard — 5ers Challenge" }] }),
+  head: () => ({ meta: [{ title: "Dashboard — 7star Challenge" }] }),
 });
 
 const PAIRS = ["EUR/USD", "GBP/USD", "USD/JPY", "AUD/USD", "USD/CAD", "XAU/USD"];
