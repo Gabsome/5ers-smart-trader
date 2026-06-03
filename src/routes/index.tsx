@@ -58,7 +58,7 @@ function Landing() {
           <div className="mt-8 grid grid-cols-3 gap-4 max-w-md">
             <Stat label="Pairs scanned" value="6" />
             <Stat label="Min target" value="$20/day" />
-            <Stat label="Account size" value="$2.5k" />
+            <Stat label="Built for" value="High stakes" />
           </div>
         </motion.div>
 
