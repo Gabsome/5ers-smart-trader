@@ -49,8 +49,8 @@ export const getQuotes = createServerFn({ method: "POST" })
   });
 
 const MODE_BRIEFS: Record<string, string> = {
-  challenge: "5ers Step 1: $2,500 account. 8% profit target. Max 5% daily drawdown, 10% overall. Be selective.",
-  verification: "5ers Step 2: 5% profit target, same DD rules. Capital preservation over aggression.",
+  challenge: "Step 1: $2,500 account. 8% profit target. Max 5% daily drawdown, 10% overall. Be selective.",
+  verification: "Step 2: 5% profit target, same DD rules. Capital preservation over aggression.",
   funded: "Live funded account. Trade conservatively, prioritize keeping the account.",
   demo: "Demo/testing mode. Experimental setups allowed for learning.",
 };
@@ -204,7 +204,7 @@ export const getDailyPick = createServerFn({ method: "POST" })
     const stats = summarizeTrades(tradeRows ?? []);
     const NEWS_WINDOW_MIN = 30;
 
-    // 5ers max-lot caps (conservative, keeps you compliant on any account size).
+    // max-lot caps (conservative, keeps you compliant on any account size).
     // FX majors: 0.5 lot per $1k · JPY: 0.4 per $1k · Gold/XAU: 0.05 per $1k.
     const maxLotFor = (pair: string) =>
       pair.includes("XAU") ? Math.max(0.01, (balance / 1000) * 0.05)
@@ -230,7 +230,7 @@ export const getDailyPick = createServerFn({ method: "POST" })
       pair: string; bias: "buy" | "sell"; entry: number; sl: number; tp: number;
       slPips: number; tpPips: number; lot: number; score: number; setup: any; htf: any;
       factors: string[];
-      timing: { action: "enter_now" | "wait"; order_type: "market" | "buy_limit" | "sell_limit"; trigger_price: number; note: string };
+      timing: { action: "enter_now" | "wait"; order_type: "market" | "buy_limit" | "sell_limit" | "buy_stop" | "sell_stop" | "buy_stop_limit" | "sell_stop_limit"; trigger_price: number; limit_price: number | null; note: string };
       lotCapped: boolean; actualRiskUsd: number;
     };
     const candidates: Candidate[] = [];
@@ -266,7 +266,7 @@ export const getDailyPick = createServerFn({ method: "POST" })
       const slPips = slDistance / pip;
       if (slPips <= 0) continue;
 
-      // Lot sizing: respect the trader's $risk parameter, capped by 5ers max-lot.
+      // Lot sizing: respect the trader's $risk parameter, capped by max-lot.
       // A wider (safer) stop simply means a smaller lot — risk stays controlled.
       const rawLot = data.riskUsd / (slPips * dpp);
       const maxLot = maxLotFor(pair);
@@ -280,19 +280,63 @@ export const getDailyPick = createServerFn({ method: "POST" })
       const sl = setup.bias === "buy" ? entry - slDistance : entry + slDistance;
       const tp = setup.bias === "buy" ? entry + tpDistance : entry - tpDistance;
       const fmtPrice = (n: number) => n.toFixed(pair.includes("JPY") ? 3 : pair.includes("XAU") ? 2 : 5);
-      const timing = enterNow
-        ? {
-            action: "enter_now" as const,
-            order_type: "market" as const,
-            trigger_price: entry,
-            note: `Price is sitting at the EMA20 pullback zone — execute a market order now.`,
-          }
-        : {
-            action: "wait" as const,
-            order_type: (setup.bias === "buy" ? "buy_limit" : "sell_limit") as "buy_limit" | "sell_limit",
-            trigger_price: idealEntry,
-            note: `Price is ${(distToIdeal / pip).toFixed(0)} pips off the ideal entry. Place a ${setup.bias === "buy" ? "BUY LIMIT" : "SELL LIMIT"} at ${fmtPrice(idealEntry)} and let price come to you. Cancel if structure breaks.`,
+
+      // ---- Pending-order intelligence -------------------------------------
+      // Decide the EXACT order type a broker needs. Two questions:
+      //   1) Does price have to RISE or FALL to reach the trigger?
+      //   2) Are we entering INTO a pullback (limit) or on a BREAKOUT reclaim (stop)?
+      // BUY: trigger below price + with-trend pullback = BUY LIMIT; trigger above
+      //      price (price dipped below EMA20, want reclaim confirmation) = BUY STOP.
+      // Mirror for SELL. On high-volatility instruments (XAU/wide ATR) a plain stop
+      // can slip badly, so we upgrade it to a STOP-LIMIT with a capped fill price.
+      const triggerAbove = idealEntry > setup.lastClose;
+      const volatile = pair.includes("XAU") || setup.atr / Math.max(setup.lastClose, 1e-9) > 0.004;
+      const slipCap = setup.atr * 0.3;
+
+      let timing: Candidate["timing"];
+      if (enterNow) {
+        timing = {
+          action: "enter_now", order_type: "market", trigger_price: entry, limit_price: null,
+          note: `Price is sitting at the EMA20 pullback zone — execute a MARKET order now.`,
+        };
+      } else if (setup.bias === "buy") {
+        if (!triggerAbove) {
+          timing = {
+            action: "wait", order_type: "buy_limit", trigger_price: idealEntry, limit_price: null,
+            note: `Price is ${(distToIdeal / pip).toFixed(0)} pips above entry. Place a BUY LIMIT at ${fmtPrice(idealEntry)} so price comes down to you. Cancel if structure breaks.`,
           };
+        } else if (volatile) {
+          const limitPrice = idealEntry + slipCap;
+          timing = {
+            action: "wait", order_type: "buy_stop_limit", trigger_price: idealEntry, limit_price: limitPrice,
+            note: `Price dipped below EMA20. Use a BUY STOP-LIMIT: trigger ${fmtPrice(idealEntry)}, limit ${fmtPrice(limitPrice)} — fills only on a confirmed reclaim and caps slippage on this volatile instrument.`,
+          };
+        } else {
+          timing = {
+            action: "wait", order_type: "buy_stop", trigger_price: idealEntry, limit_price: null,
+            note: `Price is below EMA20. Place a BUY STOP at ${fmtPrice(idealEntry)} — triggers only when price reclaims the level (breakout confirmation), avoiding a falling-knife entry.`,
+          };
+        }
+      } else {
+        if (triggerAbove) {
+          timing = {
+            action: "wait", order_type: "sell_limit", trigger_price: idealEntry, limit_price: null,
+            note: `Price is ${(distToIdeal / pip).toFixed(0)} pips below entry. Place a SELL LIMIT at ${fmtPrice(idealEntry)} so price rallies up to you. Cancel if structure breaks.`,
+          };
+        } else if (volatile) {
+          const limitPrice = idealEntry - slipCap;
+          timing = {
+            action: "wait", order_type: "sell_stop_limit", trigger_price: idealEntry, limit_price: limitPrice,
+            note: `Price popped above EMA20. Use a SELL STOP-LIMIT: trigger ${fmtPrice(idealEntry)}, limit ${fmtPrice(limitPrice)} — fills only on a confirmed rejection and caps slippage on this volatile instrument.`,
+          };
+        } else {
+          timing = {
+            action: "wait", order_type: "sell_stop", trigger_price: idealEntry, limit_price: null,
+            note: `Price is above EMA20. Place a SELL STOP at ${fmtPrice(idealEntry)} — triggers only when price breaks back below the level (breakdown confirmation).`,
+          };
+        }
+      }
+
 
       // Structured analysis — every factor is an explicit, auditable reason
       const factors: string[] = [];
@@ -314,8 +358,8 @@ export const getDailyPick = createServerFn({ method: "POST" })
       factors.push(`SL (${slPips.toFixed(0)} pips) sits beyond the recent ${setup.bias === "buy" ? "swing low" : "swing high"} +0.5·ATR — price must break market structure to hit it, so it's unlikely to trigger before TP.`);
       factors.push(enterNow
         ? `Price is at the level — market entry valid right now.`
-        : `Pending ${timing.order_type.toUpperCase().replace("_", " ")} at EMA20 — disciplined entry, no chasing.`);
-      factors.push(`Lot ${lot} sized for ~$${actualRiskUsd} risk → $${data.targetUsd} target. ${lotCapped ? `(Capped by 5ers max-lot rule for $${balance.toFixed(0)} account.)` : "(Full risk allocated.)"}`);
+        : `Pending ${timing.order_type.toUpperCase().replaceAll("_", " ")} at EMA20 — disciplined entry, no chasing.`);
+      factors.push(`Lot ${lot} sized for ~$${actualRiskUsd} risk → $${data.targetUsd} target. ${lotCapped ? `(Capped by max-lot rule for $${balance.toFixed(0)} account.)` : "(Full risk allocated.)"}`);
 
       // Learning: your own historical edge on this pair.
       const stat = stats.byPair[pair];

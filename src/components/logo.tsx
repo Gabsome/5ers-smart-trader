@@ -39,9 +39,9 @@ export function Logo({ size = 40, animated = true, withText = false }: Props) {
           animate={animated ? { pathLength: 1 } : undefined}
           transition={{ duration: 1.1, ease: "easeInOut" }}
         />
-        {/* Stylized 5 */}
+        {/* Stylized 7 */}
         <motion.path
-          d="M18 14 H32 M18 14 V23 C24 21 30 22 30 28 C30 34 24 36 18 33"
+          d="M17 15 H32 L22 35"
           stroke="var(--gold)"
           strokeWidth="3"
           strokeLinecap="round"
@@ -62,7 +62,7 @@ export function Logo({ size = 40, animated = true, withText = false }: Props) {
       </Mark>
       {withText && (
         <div className="leading-tight">
-          <div className="font-bold tracking-tight">5ers Challenge</div>
+          <div className="font-bold tracking-tight">7star Challenge</div>
           <div className="text-[10px] uppercase tracking-widest text-muted-foreground">by Gabsome-X</div>
         </div>
       )}

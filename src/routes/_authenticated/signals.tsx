@@ -12,7 +12,7 @@ import { TradingViewChart } from "@/components/tradingview-chart";
 
 export const Route = createFileRoute("/_authenticated/signals")({
   component: Signals,
-  head: () => ({ meta: [{ title: "Signals — 5ers Challenge" }] }),
+  head: () => ({ meta: [{ title: "Signals — 7star Challenge" }] }),
 });
 
 const PAIRS = ["EUR/USD", "GBP/USD", "USD/JPY", "AUD/USD", "USD/CAD", "XAU/USD"];

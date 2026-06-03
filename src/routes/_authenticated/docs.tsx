@@ -13,7 +13,7 @@ export const Route = createFileRoute("/_authenticated/docs")({
   component: Docs,
   head: () => ({
     meta: [
-      { title: "User Guide & Documentation — 5ers Challenge" },
+      { title: "User Guide & Documentation — 7star Challenge" },
       {
         name: "description",
         content:
@@ -33,7 +33,7 @@ function Docs() {
         <div>
           <h1 className="text-2xl font-bold">User Guide & Documentation</h1>
           <p className="text-sm text-muted-foreground">
-            Everything you need to run the daily routine and pass your 5ers
+            Everything you need to run the daily routine and pass your prop-firm
             challenge.
           </p>
         </div>
@@ -53,7 +53,7 @@ function Docs() {
             <strong>wait</strong> for price to reach a pending limit.
           </li>
           <li>
-            Place that order on your 5ers/broker platform exactly as shown — the
+            Place that order on your broker platform exactly as shown — the
             site does <strong>not</strong> auto-execute trades.
           </li>
           <li>
@@ -70,7 +70,7 @@ function Docs() {
       <Section icon={<ClipboardList />} title="Setting & tracking your target">
         <p>
           Go to <strong>Settings → Profit target ($)</strong> and enter the
-          dollar amount you want to reach (e.g. the 5ers profit objective for
+          dollar amount you want to reach (e.g. the profit objective for
           your account size). The <strong>Profit target</strong> card on the
           dashboard then auto-tracks your real balance growth toward that number
           — every closed trade moves the bar. All dashboard cards read from the
@@ -91,7 +91,7 @@ function Docs() {
           to genuinely break structure to hit it — it is far less likely to be
           stopped out before the take profit. Your risk parameters still rule:
           the lot size is sized so a wider, safer stop simply risks less, capped
-          by the 5ers max-lot rule for your balance.
+          by the max-lot rule for your balance.
         </p>
       </Section>
 
@@ -113,16 +113,16 @@ function Docs() {
         </p>
       </Section>
 
-      <Section icon={<ClipboardList />} title="Documents you need for 5ers">
+      <Section icon={<ClipboardList />} title="Documents you need for your prop firm">
         <ul className="list-disc pl-5 space-y-1">
           <li>Government-issued photo ID (passport / national ID) for KYC.</li>
           <li>Proof of address (utility bill or bank statement, recent).</li>
-          <li>Your 5ers account credentials & account size / phase.</li>
+          <li>Your prop-firm account credentials & account size / phase.</li>
           <li>
             A trading journal record (the in-app Journal export covers this).
           </li>
           <li>
-            The 5ers rules sheet for your plan: profit target, max daily
+            The prop-firm rules sheet for your plan: profit target, max daily
             drawdown (5%), max overall drawdown (10%).
           </li>
         </ul>

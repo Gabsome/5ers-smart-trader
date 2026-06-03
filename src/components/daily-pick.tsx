@@ -123,8 +123,11 @@ export function DailyPick() {
                 </div>
                 {p.timing.action !== "enter_now" && (
                   <div className="text-right">
-                    <div className="text-[10px] text-muted-foreground uppercase">{p.timing.order_type}</div>
+                    <div className="text-[10px] text-muted-foreground uppercase">{String(p.timing.order_type).replaceAll("_", " ")}</div>
                     <div className="text-sm font-bold font-mono text-primary">{Number(p.timing.trigger_price).toFixed(p.pair.includes("JPY") ? 3 : p.pair.includes("XAU") ? 2 : 5)}</div>
+                    {p.timing.limit_price != null && (
+                      <div className="text-[10px] text-muted-foreground">limit {Number(p.timing.limit_price).toFixed(p.pair.includes("JPY") ? 3 : p.pair.includes("XAU") ? 2 : 5)}</div>
+                    )}
                   </div>
                 )}
               </div>

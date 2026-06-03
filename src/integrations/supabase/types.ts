@@ -113,6 +113,48 @@ export type Database = {
         }
         Relationships: []
       }
+      subscriptions: {
+        Row: {
+          created_at: string
+          current_period_end: string | null
+          id: string
+          last_payment_at: string | null
+          last_payment_usd: number | null
+          paypal_last_order_id: string | null
+          plan: string
+          registration_paid: boolean
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          current_period_end?: string | null
+          id?: string
+          last_payment_at?: string | null
+          last_payment_usd?: number | null
+          paypal_last_order_id?: string | null
+          plan?: string
+          registration_paid?: boolean
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          current_period_end?: string | null
+          id?: string
+          last_payment_at?: string | null
+          last_payment_usd?: number | null
+          paypal_last_order_id?: string | null
+          plan?: string
+          registration_paid?: boolean
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       trades: {
         Row: {
           closed_at: string | null

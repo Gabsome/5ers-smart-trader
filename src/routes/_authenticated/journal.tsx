@@ -14,7 +14,7 @@ import { listTrades, logTrade, updateTrade, deleteTrade } from "@/lib/trades.fun
 
 export const Route = createFileRoute("/_authenticated/journal")({
   component: Journal,
-  head: () => ({ meta: [{ title: "Trade journal — 5ers Challenge" }] }),
+  head: () => ({ meta: [{ title: "Trade journal — 7star Challenge" }] }),
 });
 
 const PAIRS = ["EUR/USD", "GBP/USD", "USD/JPY", "AUD/USD", "USD/CAD", "XAU/USD"];

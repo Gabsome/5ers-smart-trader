@@ -10,8 +10,8 @@ export const Route = createFileRoute("/")({
   component: Landing,
   head: () => ({
     meta: [
-      { title: "5ers Challenge — by Gabsome-X" },
-      { name: "description", content: "AI-assisted trading dashboard built for the 5ers $2.5k 2-step challenge. Real-time signals on majors + XAUUSD, live charts, smart risk." },
+      { title: "7star Challenge — by Gabsome-X" },
+      { name: "description", content: "AI-assisted trading dashboard built for the high-stakes 2-step challenge. Real-time signals on majors + XAUUSD, live charts, smart risk." },
     ],
   }),
 });
@@ -30,7 +30,7 @@ function Landing() {
         <div className="container mx-auto flex items-center justify-between py-4 px-6">
           <Link to="/" className="flex items-center gap-2 font-bold">
             <Logo size={36} />
-            <span className="text-lg">5ers Challenge <span className="text-primary">·</span> <span className="text-muted-foreground font-medium">by Gabsome-X</span></span>
+            <span className="text-lg">7star Challenge <span className="text-primary">·</span> <span className="text-muted-foreground font-medium">by Gabsome-X</span></span>
           </Link>
           <Link to="/login">
             <Button>Sign in</Button>
@@ -42,7 +42,7 @@ function Landing() {
       <section className="container mx-auto px-6 py-20 md:py-28 grid lg:grid-cols-2 gap-12 items-center">
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }}>
           <div className="inline-flex items-center gap-2 rounded-full border border-border/80 bg-card px-3 py-1 text-xs text-muted-foreground mb-6">
-            <Sparkles className="size-3.5 text-primary" /> Built for the 5ers $2,500 2-step
+            <Sparkles className="size-3.5 text-primary" /> Built for high stakes 2 step
           </div>
           <h1 className="text-4xl md:text-6xl font-bold leading-[1.05] tracking-tight">
             Pass the challenge.<br />
@@ -58,7 +58,7 @@ function Landing() {
           <div className="mt-8 grid grid-cols-3 gap-4 max-w-md">
             <Stat label="Pairs scanned" value="6" />
             <Stat label="Min target" value="$20/day" />
-            <Stat label="Account size" value="$2.5k" />
+            <Stat label="Built for" value="High stakes" />
           </div>
         </motion.div>
 
@@ -113,7 +113,7 @@ function Landing() {
       </section>
 
       <footer className="border-t border-border py-8 text-center text-xs text-muted-foreground">
-        5ers Challenge · by Gabsome-X · This tool provides signals & tracking only. It does not place trades on your broker.
+        7star Challenge · by Gabsome-X · This tool provides signals & tracking only. It does not place trades on your broker.
       </footer>
     </div>
   );
