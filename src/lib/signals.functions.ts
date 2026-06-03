@@ -230,7 +230,7 @@ export const getDailyPick = createServerFn({ method: "POST" })
       pair: string; bias: "buy" | "sell"; entry: number; sl: number; tp: number;
       slPips: number; tpPips: number; lot: number; score: number; setup: any; htf: any;
       factors: string[];
-      timing: { action: "enter_now" | "wait"; order_type: "market" | "buy_limit" | "sell_limit"; trigger_price: number; note: string };
+      timing: { action: "enter_now" | "wait"; order_type: "market" | "buy_limit" | "sell_limit" | "buy_stop" | "sell_stop" | "buy_stop_limit" | "sell_stop_limit"; trigger_price: number; limit_price: number | null; note: string };
       lotCapped: boolean; actualRiskUsd: number;
     };
     const candidates: Candidate[] = [];
