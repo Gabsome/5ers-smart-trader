@@ -280,19 +280,63 @@ export const getDailyPick = createServerFn({ method: "POST" })
       const sl = setup.bias === "buy" ? entry - slDistance : entry + slDistance;
       const tp = setup.bias === "buy" ? entry + tpDistance : entry - tpDistance;
       const fmtPrice = (n: number) => n.toFixed(pair.includes("JPY") ? 3 : pair.includes("XAU") ? 2 : 5);
-      const timing = enterNow
-        ? {
-            action: "enter_now" as const,
-            order_type: "market" as const,
-            trigger_price: entry,
-            note: `Price is sitting at the EMA20 pullback zone — execute a market order now.`,
-          }
-        : {
-            action: "wait" as const,
-            order_type: (setup.bias === "buy" ? "buy_limit" : "sell_limit") as "buy_limit" | "sell_limit",
-            trigger_price: idealEntry,
-            note: `Price is ${(distToIdeal / pip).toFixed(0)} pips off the ideal entry. Place a ${setup.bias === "buy" ? "BUY LIMIT" : "SELL LIMIT"} at ${fmtPrice(idealEntry)} and let price come to you. Cancel if structure breaks.`,
+
+      // ---- Pending-order intelligence -------------------------------------
+      // Decide the EXACT order type a broker needs. Two questions:
+      //   1) Does price have to RISE or FALL to reach the trigger?
+      //   2) Are we entering INTO a pullback (limit) or on a BREAKOUT reclaim (stop)?
+      // BUY: trigger below price + with-trend pullback = BUY LIMIT; trigger above
+      //      price (price dipped below EMA20, want reclaim confirmation) = BUY STOP.
+      // Mirror for SELL. On high-volatility instruments (XAU/wide ATR) a plain stop
+      // can slip badly, so we upgrade it to a STOP-LIMIT with a capped fill price.
+      const triggerAbove = idealEntry > setup.lastClose;
+      const volatile = pair.includes("XAU") || setup.atr / Math.max(setup.lastClose, 1e-9) > 0.004;
+      const slipCap = setup.atr * 0.3;
+
+      let timing: Candidate["timing"];
+      if (enterNow) {
+        timing = {
+          action: "enter_now", order_type: "market", trigger_price: entry, limit_price: null,
+          note: `Price is sitting at the EMA20 pullback zone — execute a MARKET order now.`,
+        };
+      } else if (setup.bias === "buy") {
+        if (!triggerAbove) {
+          timing = {
+            action: "wait", order_type: "buy_limit", trigger_price: idealEntry, limit_price: null,
+            note: `Price is ${(distToIdeal / pip).toFixed(0)} pips above entry. Place a BUY LIMIT at ${fmtPrice(idealEntry)} so price comes down to you. Cancel if structure breaks.`,
           };
+        } else if (volatile) {
+          const limitPrice = idealEntry + slipCap;
+          timing = {
+            action: "wait", order_type: "buy_stop_limit", trigger_price: idealEntry, limit_price: limitPrice,
+            note: `Price dipped below EMA20. Use a BUY STOP-LIMIT: trigger ${fmtPrice(idealEntry)}, limit ${fmtPrice(limitPrice)} — fills only on a confirmed reclaim and caps slippage on this volatile instrument.`,
+          };
+        } else {
+          timing = {
+            action: "wait", order_type: "buy_stop", trigger_price: idealEntry, limit_price: null,
+            note: `Price is below EMA20. Place a BUY STOP at ${fmtPrice(idealEntry)} — triggers only when price reclaims the level (breakout confirmation), avoiding a falling-knife entry.`,
+          };
+        }
+      } else {
+        if (triggerAbove) {
+          timing = {
+            action: "wait", order_type: "sell_limit", trigger_price: idealEntry, limit_price: null,
+            note: `Price is ${(distToIdeal / pip).toFixed(0)} pips below entry. Place a SELL LIMIT at ${fmtPrice(idealEntry)} so price rallies up to you. Cancel if structure breaks.`,
+          };
+        } else if (volatile) {
+          const limitPrice = idealEntry - slipCap;
+          timing = {
+            action: "wait", order_type: "sell_stop_limit", trigger_price: idealEntry, limit_price: limitPrice,
+            note: `Price popped above EMA20. Use a SELL STOP-LIMIT: trigger ${fmtPrice(idealEntry)}, limit ${fmtPrice(limitPrice)} — fills only on a confirmed rejection and caps slippage on this volatile instrument.`,
+          };
+        } else {
+          timing = {
+            action: "wait", order_type: "sell_stop", trigger_price: idealEntry, limit_price: null,
+            note: `Price is above EMA20. Place a SELL STOP at ${fmtPrice(idealEntry)} — triggers only when price breaks back below the level (breakdown confirmation).`,
+          };
+        }
+      }
+
 
       // Structured analysis — every factor is an explicit, auditable reason
       const factors: string[] = [];
