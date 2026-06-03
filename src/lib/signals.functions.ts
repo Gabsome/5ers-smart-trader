@@ -358,7 +358,7 @@ export const getDailyPick = createServerFn({ method: "POST" })
       factors.push(`SL (${slPips.toFixed(0)} pips) sits beyond the recent ${setup.bias === "buy" ? "swing low" : "swing high"} +0.5·ATR — price must break market structure to hit it, so it's unlikely to trigger before TP.`);
       factors.push(enterNow
         ? `Price is at the level — market entry valid right now.`
-        : `Pending ${timing.order_type.toUpperCase().replace("_", " ")} at EMA20 — disciplined entry, no chasing.`);
+        : `Pending ${timing.order_type.toUpperCase().replaceAll("_", " ")} at EMA20 — disciplined entry, no chasing.`);
       factors.push(`Lot ${lot} sized for ~$${actualRiskUsd} risk → $${data.targetUsd} target. ${lotCapped ? `(Capped by max-lot rule for $${balance.toFixed(0)} account.)` : "(Full risk allocated.)"}`);
 
       // Learning: your own historical edge on this pair.
