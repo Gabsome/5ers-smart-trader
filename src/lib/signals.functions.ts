@@ -49,8 +49,8 @@ export const getQuotes = createServerFn({ method: "POST" })
   });
 
 const MODE_BRIEFS: Record<string, string> = {
-  challenge: "5ers Step 1: $2,500 account. 8% profit target. Max 5% daily drawdown, 10% overall. Be selective.",
-  verification: "5ers Step 2: 5% profit target, same DD rules. Capital preservation over aggression.",
+  challenge: "Step 1: $2,500 account. 8% profit target. Max 5% daily drawdown, 10% overall. Be selective.",
+  verification: "Step 2: 5% profit target, same DD rules. Capital preservation over aggression.",
   funded: "Live funded account. Trade conservatively, prioritize keeping the account.",
   demo: "Demo/testing mode. Experimental setups allowed for learning.",
 };
@@ -204,7 +204,7 @@ export const getDailyPick = createServerFn({ method: "POST" })
     const stats = summarizeTrades(tradeRows ?? []);
     const NEWS_WINDOW_MIN = 30;
 
-    // 5ers max-lot caps (conservative, keeps you compliant on any account size).
+    // max-lot caps (conservative, keeps you compliant on any account size).
     // FX majors: 0.5 lot per $1k · JPY: 0.4 per $1k · Gold/XAU: 0.05 per $1k.
     const maxLotFor = (pair: string) =>
       pair.includes("XAU") ? Math.max(0.01, (balance / 1000) * 0.05)
@@ -266,7 +266,7 @@ export const getDailyPick = createServerFn({ method: "POST" })
       const slPips = slDistance / pip;
       if (slPips <= 0) continue;
 
-      // Lot sizing: respect the trader's $risk parameter, capped by 5ers max-lot.
+      // Lot sizing: respect the trader's $risk parameter, capped by max-lot.
       // A wider (safer) stop simply means a smaller lot — risk stays controlled.
       const rawLot = data.riskUsd / (slPips * dpp);
       const maxLot = maxLotFor(pair);
@@ -315,7 +315,7 @@ export const getDailyPick = createServerFn({ method: "POST" })
       factors.push(enterNow
         ? `Price is at the level — market entry valid right now.`
         : `Pending ${timing.order_type.toUpperCase().replace("_", " ")} at EMA20 — disciplined entry, no chasing.`);
-      factors.push(`Lot ${lot} sized for ~$${actualRiskUsd} risk → $${data.targetUsd} target. ${lotCapped ? `(Capped by 5ers max-lot rule for $${balance.toFixed(0)} account.)` : "(Full risk allocated.)"}`);
+      factors.push(`Lot ${lot} sized for ~$${actualRiskUsd} risk → $${data.targetUsd} target. ${lotCapped ? `(Capped by max-lot rule for $${balance.toFixed(0)} account.)` : "(Full risk allocated.)"}`);
 
       // Learning: your own historical edge on this pair.
       const stat = stats.byPair[pair];

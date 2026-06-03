@@ -76,7 +76,7 @@ function Settings() {
           dashboard target card auto-tracks your balance growth toward it. See the <strong className="text-foreground">Guide</strong> tab for the full how-to and required documents.
         </p>
         <p className="mt-3">
-          This dashboard does <strong className="text-foreground">not</strong> place trades on 5ers — log entries here after you execute them on the broker so tracking stays accurate.
+          This dashboard does <strong className="text-foreground">not</strong> place trades on your broker — log entries here after you execute them on the broker so tracking stays accurate.
         </p>
       </div>
     </div>
