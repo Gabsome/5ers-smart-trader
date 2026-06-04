@@ -80,6 +80,7 @@ function AuthLayout() {
       <main className="flex-1 container mx-auto px-4 lg:px-6 py-6">
         <Outlet />
       </main>
+      <AmyAssistant />
     </div>
   );
 }
