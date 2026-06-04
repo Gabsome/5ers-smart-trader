@@ -1,4 +1,4 @@
-import { createServerFn, useServerFn } from "@tanstack/react-start";
+import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { generateAmyReply, synthesizeAmyVoice } from "./amy.server";
