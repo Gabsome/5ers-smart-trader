@@ -94,7 +94,6 @@ export const getDashboard = createServerFn({ method: "GET" })
     ]);
     const all = trades ?? [];
     const startingBalance = Number(profile?.starting_balance ?? 2500);
-    const currentBalance = Number(profile?.current_balance ?? startingBalance);
     const mode = profile?.current_mode ?? "challenge";
     const dailyGoal = Number(profile?.daily_goal_usd ?? 20);
     const profitTargetUsd = Number(profile?.profit_target_usd ?? 200);
@@ -106,9 +105,13 @@ export const getDashboard = createServerFn({ method: "GET" })
     const closed = all.filter((t) => t.status !== "open");
     const wins = closed.filter((t) => t.status === "win").length;
     const winRate = closed.length ? (wins / closed.length) * 100 : 0;
-    
 
-    // Equity curve
+    // Single source of truth: realized P&L from closed trades drives the balance.
+    // This guarantees Balance, Total P&L, Target and the equity curve always agree.
+    const realized = closed.reduce((s, t) => s + Number(t.pnl_usd ?? 0), 0);
+    const currentBalance = startingBalance + realized;
+
+    // Equity curve — same realized series, ending exactly at currentBalance.
     let eq = startingBalance;
     const equity = [{ t: profile?.created_at ?? new Date().toISOString(), v: eq }];
     for (const t of closed) {
@@ -116,8 +119,8 @@ export const getDashboard = createServerFn({ method: "GET" })
       equity.push({ t: t.closed_at ?? t.opened_at, v: eq });
     }
 
-    // Achieved profit is the single source of truth: balance growth = realized P&L.
-    const achieved = currentBalance - startingBalance;
+    // Achieved profit = realized growth from start.
+    const achieved = realized;
     // Target distances — user-set dollar target drives everything.
     const targetUsd = profitTargetUsd;
     const targetPct = startingBalance > 0 ? (targetUsd / startingBalance) * 100 : 0;
