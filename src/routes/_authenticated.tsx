@@ -1,11 +1,15 @@
 import { createFileRoute, Link, Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useServerFn } from "@tanstack/react-start";
 import { LayoutDashboard, Radio, BookOpen, Settings, LogOut, HelpCircle } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
 import { ModeSwitcher } from "@/components/mode-switcher";
 import { Logo } from "@/components/logo";
 import { LoadingScreen } from "@/components/loading-screen";
+import { Paywall } from "@/components/paywall";
+import { getAccessStatus } from "@/lib/access.functions";
 
 export const Route = createFileRoute("/_authenticated")({
   component: AuthLayout,
@@ -16,13 +20,25 @@ function AuthLayout() {
   const nav = useNavigate();
   const path = useRouterState({ select: (s) => s.location.pathname });
 
+  const fetchAccess = useServerFn(getAccessStatus);
+  const accessQuery = useQuery({
+    queryKey: ["access"],
+    queryFn: () => fetchAccess(),
+    enabled: !!user,
+  });
+
   useEffect(() => {
     if (!loading && !user) nav({ to: "/login" });
   }, [loading, user, nav]);
 
-  if (loading || !user) {
+  if (loading || !user || accessQuery.isLoading) {
     return <LoadingScreen label="Loading your trade desk…" />;
   }
+
+  if (accessQuery.data && !accessQuery.data.active) {
+    return <Paywall access={accessQuery.data} />;
+  }
+
 
   const navItems = [
     { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
