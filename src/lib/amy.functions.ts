@@ -65,4 +65,3 @@ export const speakAmy = createServerFn({ method: "POST" })
     return { audio };
   });
 
-export { useServerFn };
