@@ -459,7 +459,7 @@ export const getDailyPick = createServerFn({ method: "POST" })
         timeframe: data.interval,
         higher_timeframe: htf,
         generated_at: new Date().toISOString(),
-        disclaimer: "Educational use only — not financial advice. © Gabriel Maina Mwangi, Nakuru.",
+        disclaimer: "Educational use only — not financial advice. © X-epic Enterprise, Nakuru.",
       },
       candidates: candidates.length,
       qualified: qualified.length,

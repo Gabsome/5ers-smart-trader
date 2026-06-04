@@ -10,6 +10,7 @@ import { Logo } from "@/components/logo";
 import { LoadingScreen } from "@/components/loading-screen";
 import { Paywall } from "@/components/paywall";
 import { getAccessStatus } from "@/lib/access.functions";
+import { AmyAssistant } from "@/components/amy-assistant";
 
 export const Route = createFileRoute("/_authenticated")({
   component: AuthLayout,
@@ -54,7 +55,7 @@ function AuthLayout() {
         <div className="container mx-auto px-4 lg:px-6 py-3 flex items-center justify-between gap-4">
           <Link to="/dashboard" className="flex items-center gap-2 font-bold shrink-0">
             <Logo size={32} />
-            <span className="hidden sm:inline">7star Challenge <span className="text-muted-foreground font-medium text-sm">· Gabsome-X</span></span>
+            <span className="hidden sm:inline">7star Challenge <span className="text-muted-foreground font-medium text-sm">· X-epic Enterprise</span></span>
           </Link>
           <nav className="flex items-center gap-1 overflow-x-auto">
             {navItems.map((it) => {
@@ -79,6 +80,7 @@ function AuthLayout() {
       <main className="flex-1 container mx-auto px-4 lg:px-6 py-6">
         <Outlet />
       </main>
+      <AmyAssistant />
     </div>
   );
 }

@@ -10,7 +10,7 @@ export const Route = createFileRoute("/")({
   component: Landing,
   head: () => ({
     meta: [
-      { title: "7star Challenge — by Gabsome-X" },
+      { title: "7star Challenge — by X-epic Enterprise" },
       { name: "description", content: "AI-assisted trading dashboard built for the high-stakes 2-step challenge. Real-time signals on majors + XAUUSD, live charts, smart risk." },
     ],
   }),
@@ -30,7 +30,7 @@ function Landing() {
         <div className="container mx-auto flex items-center justify-between py-4 px-6">
           <Link to="/" className="flex items-center gap-2 font-bold">
             <Logo size={36} />
-            <span className="text-lg">7star Challenge <span className="text-primary">·</span> <span className="text-muted-foreground font-medium">by Gabsome-X</span></span>
+            <span className="text-lg">7star Challenge <span className="text-primary">·</span> <span className="text-muted-foreground font-medium">by X-epic Enterprise</span></span>
           </Link>
           <Link to="/login">
             <Button>Sign in</Button>
@@ -113,7 +113,7 @@ function Landing() {
       </section>
 
       <footer className="border-t border-border py-8 text-center text-xs text-muted-foreground">
-        7star Challenge · by Gabsome-X · This tool provides signals & tracking only. It does not place trades on your broker.
+        7star Challenge · by X-epic Enterprise · This tool provides signals & tracking only. It does not place trades on your broker.
       </footer>
     </div>
   );

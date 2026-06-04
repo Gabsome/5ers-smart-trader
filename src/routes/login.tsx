@@ -44,7 +44,7 @@ function LoginPage() {
           <Logo size={64} />
         </div>
         <h1 className="text-2xl font-bold">7star Challenge</h1>
-        <p className="text-sm text-muted-foreground mt-1">by Gabsome-X</p>
+        <p className="text-sm text-muted-foreground mt-1">by X-epic Enterprise</p>
         <p className="mt-6 text-sm text-muted-foreground">
           Sign in to access your AI trading dashboard.
         </p>

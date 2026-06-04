@@ -161,7 +161,7 @@ export function DailyPick() {
             )}
 
             <p className="text-[10px] text-muted-foreground text-center italic">
-              Educational use only · Not financial advice · © Gabriel Maina Mwangi, Nakuru
+              Educational use only · Not financial advice · © X-epic Enterprise, Nakuru
             </p>
 
             <Button variant="outline" className="w-full" onClick={() => log.mutate()} disabled={log.isPending}>
