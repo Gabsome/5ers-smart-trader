@@ -10,6 +10,7 @@ import { Logo } from "@/components/logo";
 import { LoadingScreen } from "@/components/loading-screen";
 import { Paywall } from "@/components/paywall";
 import { getAccessStatus } from "@/lib/access.functions";
+import { AmyAssistant } from "@/components/amy-assistant";
 
 export const Route = createFileRoute("/_authenticated")({
   component: AuthLayout,
