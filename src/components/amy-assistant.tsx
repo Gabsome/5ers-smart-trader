@@ -247,12 +247,18 @@ export function AmyAssistant() {
           <div ref={scrollRef} className="flex-1 overflow-y-auto px-3 py-4 space-y-3">
             {messages.length === 0 && !sending && (
               <div className="text-center text-sm text-muted-foreground px-4 py-8">
-                <div className="text-3xl mb-2" role="img" aria-label="Amy">👩🏻</div>
-                Hi, I'm Amy {AMY_AVATAR} Ask me anything about forex, order types, risk, or how to use the platform.
+                <div className="text-3xl mb-2" role="img" aria-label="Amy">
+                  {AMY_AVATAR}
+                </div>
+                Hi, I'm Amy {AMY_AVATAR} Ask me anything about forex, order types, risk, or how to use
+                the platform.
               </div>
             )}
             {messages.map((m) => (
-              <div key={m.id} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
+              <div
+                key={m.id}
+                className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}
+              >
                 <div
                   className={`max-w-[80%] rounded-2xl px-3.5 py-2 text-sm whitespace-pre-wrap ${
                     m.role === "user"
@@ -274,7 +280,9 @@ export function AmyAssistant() {
                 </div>
               </div>
             ))}
-            {voiceNotice && <div className="text-center text-xs text-muted-foreground px-3">{voiceNotice}</div>}
+            {voiceNotice && (
+              <div className="text-center text-xs text-muted-foreground px-3">{voiceNotice}</div>
+            )}
             {sending && (
               <div className="flex justify-start">
                 <div className="bg-muted rounded-2xl rounded-bl-sm px-3.5 py-2 text-sm text-muted-foreground flex items-center gap-2">
@@ -302,7 +310,12 @@ export function AmyAssistant() {
               placeholder={listening ? "Listening…" : "Ask Amy about forex…"}
               className="h-9"
             />
-            <Button size="icon" className="size-9 shrink-0" onClick={() => handleSend()} disabled={sending || !input.trim()}>
+            <Button
+              size="icon"
+              className="size-9 shrink-0"
+              onClick={() => handleSend()}
+              disabled={sending || !input.trim()}
+            >
               <Send className="size-4" />
             </Button>
           </div>
