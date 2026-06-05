@@ -147,7 +147,8 @@ function Journal() {
                     {t.status === "open" && (
                       <CloseInline onSave={(pnl, status) => closeTrade.mutate({ id: t.id, pnl, status })} />
                     )}
-                    <Button size="icon" variant="ghost" className="ml-1" onClick={() => del.mutate(t.id)}><Trash2 className="size-4" /></Button>
+                    <Button size="icon" variant="ghost" className="ml-1" title="Edit trade" onClick={() => setEditTrade(t)}><Pencil className="size-4" /></Button>
+                    <Button size="icon" variant="ghost" className="ml-1" title="Delete trade" onClick={() => del.mutate(t.id)}><Trash2 className="size-4" /></Button>
                   </td>
                 </tr>
               ))}
@@ -155,6 +156,21 @@ function Journal() {
           </table>
         </div>
       </div>
+
+      <EditTradeDialog
+        trade={editTrade}
+        onClose={() => setEditTrade(null)}
+        onSave={(data) => {
+          uFn({ data })
+            .then(() => {
+              toast.success("Trade updated");
+              setEditTrade(null);
+              qc.invalidateQueries({ queryKey: ["trades"] });
+              qc.invalidateQueries({ queryKey: ["dashboard"] });
+            })
+            .catch((e: any) => toast.error("Update failed", { description: e?.message }));
+        }}
+      />
     </div>
   );
 }
