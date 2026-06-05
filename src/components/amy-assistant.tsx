@@ -4,20 +4,40 @@ import { useServerFn } from "@tanstack/react-start";
 import { Send, X, Mic, MicOff, Volume2, VolumeX, Trash2, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  listAmyMessages,
-  sendAmyMessage,
-  clearAmyMessages,
-  speakAmy,
-} from "@/lib/amy.functions";
+import { listAmyMessages, sendAmyMessage, clearAmyMessages, speakAmy } from "@/lib/amy.functions";
 
 type Msg = { id: string; role: "user" | "assistant"; content: string; created_at: string };
 const AMY_AVATAR = "👩🏽";
 
+type SpeechRecognitionResultEventLike = {
+  results: { [index: number]: { [index: number]: { transcript: string } } };
+};
+
+type SpeechRecognitionLike = {
+  lang: string;
+  interimResults: boolean;
+  continuous: boolean;
+  onresult: ((ev: SpeechRecognitionResultEventLike) => void) | null;
+  onerror: (() => void) | null;
+  onend: (() => void) | null;
+  start: () => void;
+  stop: () => void;
+};
+
+type SpeechRecognitionConstructor = new () => SpeechRecognitionLike;
+
+function errorMessage(error: unknown, fallback: string) {
+  return error instanceof Error ? error.message : fallback;
+}
+
 // Minimal typing for the browser SpeechRecognition API.
-function getSpeechRecognition(): any {
+function getSpeechRecognition(): SpeechRecognitionConstructor | null {
   if (typeof window === "undefined") return null;
-  return (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition || null;
+  const speechWindow = window as Window & {
+    SpeechRecognition?: SpeechRecognitionConstructor;
+    webkitSpeechRecognition?: SpeechRecognitionConstructor;
+  };
+  return speechWindow.SpeechRecognition || speechWindow.webkitSpeechRecognition || null;
 }
 
 export function AmyAssistant() {
