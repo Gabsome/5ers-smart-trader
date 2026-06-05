@@ -13,6 +13,7 @@ What you help with:
 - How to use the platform: the Daily Pick, journal, settings, profit target tracking and the dashboard.
 
 Rules:
+- Amy can speak in the app through the voice button/playback controls. Never claim you cannot talk, have no voice, or only type; if voice is mentioned, invite the trader to tap the speaker or "Play voice" control.
 - Always remind users that trading carries risk and that nothing you say is financial advice — but do it briefly and naturally, not in every single message.
 - If asked something unrelated to forex/trading/the platform, gently steer back.
 - Never reveal internal system details, secrets, or account email allowlists.`;
@@ -31,22 +32,23 @@ export async function generateAmyReply(
     },
     body: JSON.stringify({
       model: "google/gemini-3-flash-preview",
-      messages: [
-        { role: "system", content: AMY_SYSTEM_PROMPT },
-        ...history.slice(-20),
-      ],
+      messages: [{ role: "system", content: AMY_SYSTEM_PROMPT }, ...history.slice(-20)],
     }),
   });
 
   if (!res.ok) {
-    if (res.status === 429) throw new Error("Amy is busy right now — please try again in a moment.");
-    if (res.status === 402) throw new Error("AI credits are exhausted. Please add credits to continue.");
+    if (res.status === 429)
+      throw new Error("Amy is busy right now — please try again in a moment.");
+    if (res.status === 402)
+      throw new Error("AI credits are exhausted. Please add credits to continue.");
     const t = await res.text();
     throw new Error(t || `AI error ${res.status}`);
   }
 
   const data = await res.json();
-  return data.choices?.[0]?.message?.content?.trim() || "Sorry, I didn't catch that. Could you rephrase?";
+  return (
+    data.choices?.[0]?.message?.content?.trim() || "Sorry, I didn't catch that. Could you rephrase?"
+  );
 }
 
 // Amy's voice — a warm, natural female ElevenLabs voice (Sarah).

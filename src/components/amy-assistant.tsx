@@ -4,19 +4,40 @@ import { useServerFn } from "@tanstack/react-start";
 import { Send, X, Mic, MicOff, Volume2, VolumeX, Trash2, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  listAmyMessages,
-  sendAmyMessage,
-  clearAmyMessages,
-  speakAmy,
-} from "@/lib/amy.functions";
+import { listAmyMessages, sendAmyMessage, clearAmyMessages, speakAmy } from "@/lib/amy.functions";
 
 type Msg = { id: string; role: "user" | "assistant"; content: string; created_at: string };
+const AMY_AVATAR = "👩🏽";
+
+type SpeechRecognitionResultEventLike = {
+  results: { [index: number]: { [index: number]: { transcript: string } } };
+};
+
+type SpeechRecognitionLike = {
+  lang: string;
+  interimResults: boolean;
+  continuous: boolean;
+  onresult: ((ev: SpeechRecognitionResultEventLike) => void) | null;
+  onerror: (() => void) | null;
+  onend: (() => void) | null;
+  start: () => void;
+  stop: () => void;
+};
+
+type SpeechRecognitionConstructor = new () => SpeechRecognitionLike;
+
+function errorMessage(error: unknown, fallback: string) {
+  return error instanceof Error ? error.message : fallback;
+}
 
 // Minimal typing for the browser SpeechRecognition API.
-function getSpeechRecognition(): any {
+function getSpeechRecognition(): SpeechRecognitionConstructor | null {
   if (typeof window === "undefined") return null;
-  return (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition || null;
+  const speechWindow = window as Window & {
+    SpeechRecognition?: SpeechRecognitionConstructor;
+    webkitSpeechRecognition?: SpeechRecognitionConstructor;
+  };
+  return speechWindow.SpeechRecognition || speechWindow.webkitSpeechRecognition || null;
 }
 
 export function AmyAssistant() {
@@ -26,6 +47,7 @@ export function AmyAssistant() {
   const [listening, setListening] = useState(false);
   const [voiceOn, setVoiceOn] = useState(true);
   const [speaking, setSpeaking] = useState(false);
+  const [voiceNotice, setVoiceNotice] = useState<string | null>(null);
 
   const qc = useQueryClient();
   const fetchMessages = useServerFn(listAmyMessages);
@@ -34,7 +56,7 @@ export function AmyAssistant() {
   const speak = useServerFn(speakAmy);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const recognitionRef = useRef<any>(null);
+  const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
   const { data: messages = [] } = useQuery({
@@ -47,19 +69,51 @@ export function AmyAssistant() {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [messages, sending, open]);
 
+  function playBrowserVoice(text: string) {
+    if (typeof window === "undefined" || !("speechSynthesis" in window)) return false;
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(text.slice(0, 900));
+    const voices = window.speechSynthesis.getVoices();
+    utterance.voice =
+      voices.find((v) => /female|samantha|victoria|zira|susan|aria|jenny|sonia/i.test(v.name)) ??
+      voices.find((v) => v.lang?.startsWith("en")) ??
+      null;
+    utterance.rate = 0.95;
+    utterance.pitch = 1.05;
+    utterance.onend = () => setSpeaking(false);
+    utterance.onerror = () => setSpeaking(false);
+    window.speechSynthesis.speak(utterance);
+    return true;
+  }
+
   async function playVoice(text: string) {
     if (!voiceOn) return;
+    setVoiceNotice(null);
     try {
       setSpeaking(true);
       const { audio } = await speak({ data: { text: text.slice(0, 2400) } });
       if (audioRef.current) {
+        audioRef.current.onended = () => setSpeaking(false);
+        audioRef.current.onerror = () => {
+          const fallback = playBrowserVoice(text);
+          if (!fallback) setSpeaking(false);
+          setVoiceNotice(
+            fallback
+              ? "Using your browser voice for now."
+              : "Voice playback failed in this browser.",
+          );
+        };
         audioRef.current.src = `data:audio/mpeg;base64,${audio}`;
-        await audioRef.current.play().catch(() => {});
+        await audioRef.current.play();
       }
-    } catch {
-      /* voice is best-effort */
-    } finally {
-      setSpeaking(false);
+    } catch (e: unknown) {
+      const fallback = playBrowserVoice(text);
+      setVoiceNotice(
+        fallback
+          ? "Using your browser voice for now."
+          : errorMessage(e, "Voice is not configured yet."),
+      );
+      if (!fallback) setSpeaking(false);
     }
   }
 
@@ -77,13 +131,13 @@ export function AmyAssistant() {
       const res = await send({ data: { message: content } });
       await qc.invalidateQueries({ queryKey: ["amy-messages"] });
       playVoice(res.reply);
-    } catch (e: any) {
+    } catch (e: unknown) {
       qc.setQueryData<Msg[]>(["amy-messages"], (old = []) => [
         ...old,
         {
           id: `err-${Date.now()}`,
           role: "assistant",
-          content: e?.message || "Sorry, something went wrong. Please try again.",
+          content: errorMessage(e, "Sorry, something went wrong. Please try again."),
           created_at: new Date().toISOString(),
         },
       ]);
@@ -107,7 +161,7 @@ export function AmyAssistant() {
     rec.lang = "en-US";
     rec.interimResults = false;
     rec.continuous = false;
-    rec.onresult = (ev: any) => {
+    rec.onresult = (ev) => {
       const transcript = ev.results[0][0].transcript;
       setListening(false);
       handleSend(transcript);
@@ -134,7 +188,9 @@ export function AmyAssistant() {
           className="fixed bottom-5 right-5 z-40 flex items-center gap-2 rounded-full bg-primary text-primary-foreground px-4 py-3 shadow-lg shadow-primary/30 hover:scale-105 transition-transform"
           aria-label="Chat with Amy"
         >
-          <span className="text-xl leading-none" role="img" aria-label="Amy">👩🏻</span>
+          <span className="text-xl leading-none" role="img" aria-label="Amy">
+            {AMY_AVATAR}
+          </span>
           <span className="font-semibold text-sm hidden sm:inline">Ask Amy</span>
         </button>
       )}
@@ -145,7 +201,9 @@ export function AmyAssistant() {
           <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-card/80">
             <div className="flex items-center gap-2">
               <span className="size-9 grid place-items-center rounded-full bg-primary/15 text-primary">
-                <span className="text-lg leading-none" role="img" aria-label="Amy">👩🏻</span>
+                <span className="text-lg leading-none" role="img" aria-label="Amy">
+                  {AMY_AVATAR}
+                </span>
               </span>
               <div className="leading-tight">
                 <div className="font-semibold text-sm">Amy</div>
@@ -155,13 +213,31 @@ export function AmyAssistant() {
               </div>
             </div>
             <div className="flex items-center gap-1">
-              <Button variant="ghost" size="icon" className="size-8" title={voiceOn ? "Mute voice" : "Enable voice"} onClick={() => setVoiceOn((v) => !v)}>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-8"
+                title={voiceOn ? "Mute voice" : "Enable voice"}
+                onClick={() => setVoiceOn((v) => !v)}
+              >
                 {voiceOn ? <Volume2 className="size-4" /> : <VolumeX className="size-4" />}
               </Button>
-              <Button variant="ghost" size="icon" className="size-8" title="Clear chat" onClick={handleClear}>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-8"
+                title="Clear chat"
+                onClick={handleClear}
+              >
                 <Trash2 className="size-4" />
               </Button>
-              <Button variant="ghost" size="icon" className="size-8" title="Close" onClick={() => setOpen(false)}>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-8"
+                title="Close"
+                onClick={() => setOpen(false)}
+              >
                 <X className="size-4" />
               </Button>
             </div>
@@ -171,12 +247,18 @@ export function AmyAssistant() {
           <div ref={scrollRef} className="flex-1 overflow-y-auto px-3 py-4 space-y-3">
             {messages.length === 0 && !sending && (
               <div className="text-center text-sm text-muted-foreground px-4 py-8">
-                <div className="text-3xl mb-2" role="img" aria-label="Amy">👩🏻</div>
-                Hi, I'm Amy 👋 Ask me anything about forex, order types, risk, or how to use the platform.
+                <div className="text-3xl mb-2" role="img" aria-label="Amy">
+                  {AMY_AVATAR}
+                </div>
+                Hi, I'm Amy {AMY_AVATAR} Ask me anything about forex, order types, risk, or how to
+                use the platform.
               </div>
             )}
             {messages.map((m) => (
-              <div key={m.id} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
+              <div
+                key={m.id}
+                className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}
+              >
                 <div
                   className={`max-w-[80%] rounded-2xl px-3.5 py-2 text-sm whitespace-pre-wrap ${
                     m.role === "user"
@@ -185,9 +267,22 @@ export function AmyAssistant() {
                   }`}
                 >
                   {m.content}
+                  {m.role === "assistant" && voiceOn && (
+                    <button
+                      type="button"
+                      onClick={() => playVoice(m.content)}
+                      className="mt-2 flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground"
+                      aria-label="Play Amy's voice"
+                    >
+                      <Volume2 className="size-3" /> Play voice
+                    </button>
+                  )}
                 </div>
               </div>
             ))}
+            {voiceNotice && (
+              <div className="text-center text-xs text-muted-foreground px-3">{voiceNotice}</div>
+            )}
             {sending && (
               <div className="flex justify-start">
                 <div className="bg-muted rounded-2xl rounded-bl-sm px-3.5 py-2 text-sm text-muted-foreground flex items-center gap-2">
@@ -215,7 +310,12 @@ export function AmyAssistant() {
               placeholder={listening ? "Listening…" : "Ask Amy about forex…"}
               className="h-9"
             />
-            <Button size="icon" className="size-9 shrink-0" onClick={() => handleSend()} disabled={sending || !input.trim()}>
+            <Button
+              size="icon"
+              className="size-9 shrink-0"
+              onClick={() => handleSend()}
+              disabled={sending || !input.trim()}
+            >
               <Send className="size-4" />
             </Button>
           </div>
