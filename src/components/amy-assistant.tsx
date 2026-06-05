@@ -188,7 +188,9 @@ export function AmyAssistant() {
           className="fixed bottom-5 right-5 z-40 flex items-center gap-2 rounded-full bg-primary text-primary-foreground px-4 py-3 shadow-lg shadow-primary/30 hover:scale-105 transition-transform"
           aria-label="Chat with Amy"
         >
-          <span className="text-xl leading-none" role="img" aria-label="Amy">{AMY_AVATAR}</span>
+          <span className="text-xl leading-none" role="img" aria-label="Amy">
+            {AMY_AVATAR}
+          </span>
           <span className="font-semibold text-sm hidden sm:inline">Ask Amy</span>
         </button>
       )}
@@ -199,7 +201,9 @@ export function AmyAssistant() {
           <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-card/80">
             <div className="flex items-center gap-2">
               <span className="size-9 grid place-items-center rounded-full bg-primary/15 text-primary">
-                <span className="text-lg leading-none" role="img" aria-label="Amy">{AMY_AVATAR}</span>
+                <span className="text-lg leading-none" role="img" aria-label="Amy">
+                  {AMY_AVATAR}
+                </span>
               </span>
               <div className="leading-tight">
                 <div className="font-semibold text-sm">Amy</div>
@@ -209,13 +213,31 @@ export function AmyAssistant() {
               </div>
             </div>
             <div className="flex items-center gap-1">
-              <Button variant="ghost" size="icon" className="size-8" title={voiceOn ? "Mute voice" : "Enable voice"} onClick={() => setVoiceOn((v) => !v)}>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-8"
+                title={voiceOn ? "Mute voice" : "Enable voice"}
+                onClick={() => setVoiceOn((v) => !v)}
+              >
                 {voiceOn ? <Volume2 className="size-4" /> : <VolumeX className="size-4" />}
               </Button>
-              <Button variant="ghost" size="icon" className="size-8" title="Clear chat" onClick={handleClear}>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-8"
+                title="Clear chat"
+                onClick={handleClear}
+              >
                 <Trash2 className="size-4" />
               </Button>
-              <Button variant="ghost" size="icon" className="size-8" title="Close" onClick={() => setOpen(false)}>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-8"
+                title="Close"
+                onClick={() => setOpen(false)}
+              >
                 <X className="size-4" />
               </Button>
             </div>
