@@ -134,7 +134,7 @@ export function AmyAssistant() {
           className="fixed bottom-5 right-5 z-40 flex items-center gap-2 rounded-full bg-primary text-primary-foreground px-4 py-3 shadow-lg shadow-primary/30 hover:scale-105 transition-transform"
           aria-label="Chat with Amy"
         >
-          <Bot className="size-5" />
+          <span className="text-xl leading-none" role="img" aria-label="Amy">👩🏻
           <span className="font-semibold text-sm hidden sm:inline">Ask Amy</span>
         </button>
       )}
