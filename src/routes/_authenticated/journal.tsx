@@ -1,8 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { useState } from "react";
-import { Plus, Trash2, Check } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Plus, Trash2, Check, Pencil } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -28,6 +28,7 @@ function Journal() {
   const trades = useQuery({ queryKey: ["trades"], queryFn: () => lFn(), refetchInterval: 30_000 });
 
   const [open, setOpen] = useState(false);
+  const [editTrade, setEditTrade] = useState<any | null>(null);
   const [form, setForm] = useState({
     pair: "EUR/USD", direction: "buy" as "buy" | "sell", entry: "", stop_loss: "", take_profit: "",
     lot_size: "0.01", pnl_usd: "0", status: "open" as const, notes: "",
@@ -146,7 +147,8 @@ function Journal() {
                     {t.status === "open" && (
                       <CloseInline onSave={(pnl, status) => closeTrade.mutate({ id: t.id, pnl, status })} />
                     )}
-                    <Button size="icon" variant="ghost" className="ml-1" onClick={() => del.mutate(t.id)}><Trash2 className="size-4" /></Button>
+                    <Button size="icon" variant="ghost" className="ml-1" title="Edit trade" onClick={() => setEditTrade(t)}><Pencil className="size-4" /></Button>
+                    <Button size="icon" variant="ghost" className="ml-1" title="Delete trade" onClick={() => del.mutate(t.id)}><Trash2 className="size-4" /></Button>
                   </td>
                 </tr>
               ))}
@@ -154,6 +156,21 @@ function Journal() {
           </table>
         </div>
       </div>
+
+      <EditTradeDialog
+        trade={editTrade}
+        onClose={() => setEditTrade(null)}
+        onSave={(data: any) => {
+          uFn({ data })
+            .then(() => {
+              toast.success("Trade updated");
+              setEditTrade(null);
+              qc.invalidateQueries({ queryKey: ["trades"] });
+              qc.invalidateQueries({ queryKey: ["dashboard"] });
+            })
+            .catch((e: any) => toast.error("Update failed", { description: e?.message }));
+        }}
+      />
     </div>
   );
 }
@@ -169,5 +186,98 @@ function CloseInline({ onSave }: { onSave: (pnl: number, status: "win" | "loss" 
       <Input className="h-7 w-20 inline-block" placeholder="P&L $" value={pnl} onChange={(e) => setPnl(e.target.value)} />
       <Button size="icon" variant="ghost" className="text-bull" onClick={() => onSave(Number(pnl) || 0, Number(pnl) > 0 ? "win" : Number(pnl) < 0 ? "loss" : "breakeven")}><Check className="size-4" /></Button>
     </span>
+  );
+}
+
+function EditTradeDialog({
+  trade,
+  onClose,
+  onSave,
+}: {
+  trade: any | null;
+  onClose: () => void;
+  onSave: (data: any) => void;
+}) {
+  const [f, setF] = useState({
+    pair: "EUR/USD", direction: "buy", entry: "", stop_loss: "", take_profit: "",
+    lot_size: "0.01", pnl_usd: "0", status: "open", notes: "",
+  });
+
+  useEffect(() => {
+    if (trade) {
+      setF({
+        pair: trade.pair ?? "EUR/USD",
+        direction: trade.direction ?? "buy",
+        entry: String(trade.entry ?? ""),
+        stop_loss: trade.stop_loss != null ? String(trade.stop_loss) : "",
+        take_profit: trade.take_profit != null ? String(trade.take_profit) : "",
+        lot_size: String(trade.lot_size ?? "0.01"),
+        pnl_usd: String(trade.pnl_usd ?? "0"),
+        status: trade.status ?? "open",
+        notes: trade.notes ?? "",
+      });
+    }
+  }, [trade]);
+
+  return (
+    <Dialog open={!!trade} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="bg-card">
+        <DialogHeader><DialogTitle>Edit trade</DialogTitle></DialogHeader>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Pair">
+            <Select value={f.pair} onValueChange={(v) => setF({ ...f, pair: v })}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>{PAIRS.map((p) => <SelectItem key={p} value={p}>{p}</SelectItem>)}</SelectContent>
+            </Select>
+          </Field>
+          <Field label="Direction">
+            <Select value={f.direction} onValueChange={(v) => setF({ ...f, direction: v })}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="buy">Buy</SelectItem><SelectItem value="sell">Sell</SelectItem>
+              </SelectContent>
+            </Select>
+          </Field>
+          <Field label="Entry"><Input type="number" step="0.00001" value={f.entry} onChange={(e) => setF({ ...f, entry: e.target.value })} /></Field>
+          <Field label="Lot size"><Input type="number" step="0.01" value={f.lot_size} onChange={(e) => setF({ ...f, lot_size: e.target.value })} /></Field>
+          <Field label="Stop loss"><Input type="number" step="0.00001" value={f.stop_loss} onChange={(e) => setF({ ...f, stop_loss: e.target.value })} /></Field>
+          <Field label="Take profit"><Input type="number" step="0.00001" value={f.take_profit} onChange={(e) => setF({ ...f, take_profit: e.target.value })} /></Field>
+          <Field label="Status">
+            <Select value={f.status} onValueChange={(v) => setF({ ...f, status: v })}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="open">Open</SelectItem>
+                <SelectItem value="win">Win</SelectItem>
+                <SelectItem value="loss">Loss</SelectItem>
+                <SelectItem value="breakeven">Breakeven</SelectItem>
+              </SelectContent>
+            </Select>
+          </Field>
+          <Field label="P&L ($)"><Input type="number" step="0.01" value={f.pnl_usd} onChange={(e) => setF({ ...f, pnl_usd: e.target.value })} /></Field>
+          <div className="col-span-2">
+            <Field label="Notes"><Textarea value={f.notes} onChange={(e) => setF({ ...f, notes: e.target.value })} rows={2} /></Field>
+          </div>
+        </div>
+        <Button
+          onClick={() =>
+            onSave({
+              id: trade.id,
+              pair: f.pair,
+              direction: f.direction,
+              entry: Number(f.entry),
+              stop_loss: f.stop_loss ? Number(f.stop_loss) : null,
+              take_profit: f.take_profit ? Number(f.take_profit) : null,
+              lot_size: Number(f.lot_size) || 0.01,
+              pnl_usd: Number(f.pnl_usd) || 0,
+              status: f.status,
+              notes: f.notes || null,
+            })
+          }
+          disabled={!f.entry}
+        >
+          Save changes
+        </Button>
+      </DialogContent>
+    </Dialog>
   );
 }

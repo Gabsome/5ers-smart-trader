@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { Bot, Send, X, Mic, MicOff, Volume2, VolumeX, Trash2, Loader2 } from "lucide-react";
+import { Send, X, Mic, MicOff, Volume2, VolumeX, Trash2, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -134,7 +134,7 @@ export function AmyAssistant() {
           className="fixed bottom-5 right-5 z-40 flex items-center gap-2 rounded-full bg-primary text-primary-foreground px-4 py-3 shadow-lg shadow-primary/30 hover:scale-105 transition-transform"
           aria-label="Chat with Amy"
         >
-          <Bot className="size-5" />
+          <span className="text-xl leading-none" role="img" aria-label="Amy">👩🏻</span>
           <span className="font-semibold text-sm hidden sm:inline">Ask Amy</span>
         </button>
       )}
@@ -145,7 +145,7 @@ export function AmyAssistant() {
           <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-card/80">
             <div className="flex items-center gap-2">
               <span className="size-9 grid place-items-center rounded-full bg-primary/15 text-primary">
-                <Bot className="size-5" />
+                <span className="text-lg leading-none" role="img" aria-label="Amy">👩🏻</span>
               </span>
               <div className="leading-tight">
                 <div className="font-semibold text-sm">Amy</div>
@@ -171,7 +171,7 @@ export function AmyAssistant() {
           <div ref={scrollRef} className="flex-1 overflow-y-auto px-3 py-4 space-y-3">
             {messages.length === 0 && !sending && (
               <div className="text-center text-sm text-muted-foreground px-4 py-8">
-                <Bot className="size-8 mx-auto mb-2 text-primary" />
+                <div className="text-3xl mb-2" role="img" aria-label="Amy">👩🏻</div>
                 Hi, I'm Amy 👋 Ask me anything about forex, order types, risk, or how to use the platform.
               </div>
             )}
