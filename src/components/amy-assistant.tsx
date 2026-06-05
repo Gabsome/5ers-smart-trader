@@ -250,8 +250,8 @@ export function AmyAssistant() {
                 <div className="text-3xl mb-2" role="img" aria-label="Amy">
                   {AMY_AVATAR}
                 </div>
-                Hi, I'm Amy {AMY_AVATAR} Ask me anything about forex, order types, risk, or how to use
-                the platform.
+                Hi, I'm Amy {AMY_AVATAR} Ask me anything about forex, order types, risk, or how to
+                use the platform.
               </div>
             )}
             {messages.map((m) => (
