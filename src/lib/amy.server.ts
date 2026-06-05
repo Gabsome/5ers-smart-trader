@@ -32,22 +32,23 @@ export async function generateAmyReply(
     },
     body: JSON.stringify({
       model: "google/gemini-3-flash-preview",
-      messages: [
-        { role: "system", content: AMY_SYSTEM_PROMPT },
-        ...history.slice(-20),
-      ],
+      messages: [{ role: "system", content: AMY_SYSTEM_PROMPT }, ...history.slice(-20)],
     }),
   });
 
   if (!res.ok) {
-    if (res.status === 429) throw new Error("Amy is busy right now — please try again in a moment.");
-    if (res.status === 402) throw new Error("AI credits are exhausted. Please add credits to continue.");
+    if (res.status === 429)
+      throw new Error("Amy is busy right now — please try again in a moment.");
+    if (res.status === 402)
+      throw new Error("AI credits are exhausted. Please add credits to continue.");
     const t = await res.text();
     throw new Error(t || `AI error ${res.status}`);
   }
 
   const data = await res.json();
-  return data.choices?.[0]?.message?.content?.trim() || "Sorry, I didn't catch that. Could you rephrase?";
+  return (
+    data.choices?.[0]?.message?.content?.trim() || "Sorry, I didn't catch that. Could you rephrase?"
+  );
 }
 
 // Amy's voice — a warm, natural female ElevenLabs voice (Sarah).
