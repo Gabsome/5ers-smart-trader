@@ -160,7 +160,7 @@ function Journal() {
       <EditTradeDialog
         trade={editTrade}
         onClose={() => setEditTrade(null)}
-        onSave={(data) => {
+        onSave={(data: any) => {
           uFn({ data })
             .then(() => {
               toast.success("Trade updated");
