@@ -171,7 +171,7 @@ export function AmyAssistant() {
           <div ref={scrollRef} className="flex-1 overflow-y-auto px-3 py-4 space-y-3">
             {messages.length === 0 && !sending && (
               <div className="text-center text-sm text-muted-foreground px-4 py-8">
-                <Bot className="size-8 mx-auto mb-2 text-primary" />
+                <div className="text-3xl mb-2" role="img" aria-label="Amy">👩🏻</div>
                 Hi, I'm Amy 👋 Ask me anything about forex, order types, risk, or how to use the platform.
               </div>
             )}
