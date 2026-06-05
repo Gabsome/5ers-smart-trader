@@ -19,11 +19,10 @@ function Settings() {
   const qc = useQueryClient();
   const { data: profile } = useQuery({ queryKey: ["profile"], queryFn: () => gFn() });
 
-  const [form, setForm] = useState({ starting_balance: "2500", current_balance: "2500", daily_goal_usd: "20", profit_target_usd: "200", risk_per_trade_pct: "0.5", display_name: "" });
+  const [form, setForm] = useState({ starting_balance: "2500", daily_goal_usd: "20", profit_target_usd: "200", risk_per_trade_pct: "0.5", display_name: "" });
   useEffect(() => {
     if (profile) setForm({
       starting_balance: String(profile.starting_balance),
-      current_balance: String(profile.current_balance),
       daily_goal_usd: String(profile.daily_goal_usd),
       profit_target_usd: String((profile as any).profit_target_usd ?? 200),
       risk_per_trade_pct: String(profile.risk_per_trade_pct),
@@ -35,14 +34,18 @@ function Settings() {
     mutationFn: () => uFn({
       data: {
         starting_balance: Number(form.starting_balance),
-        current_balance: Number(form.current_balance),
         daily_goal_usd: Number(form.daily_goal_usd),
         profit_target_usd: Number(form.profit_target_usd),
         risk_per_trade_pct: Number(form.risk_per_trade_pct),
         display_name: form.display_name,
       },
     }),
-    onSuccess: () => { toast.success("Settings saved"); qc.invalidateQueries(); },
+    onSuccess: () => {
+      toast.success("Settings saved");
+      qc.invalidateQueries({ queryKey: ["profile"] });
+      qc.invalidateQueries({ queryKey: ["dashboard"] });
+      qc.invalidateQueries({ queryKey: ["trades"] });
+    },
     onError: (e: any) => toast.error("Save failed", { description: e?.message }),
   });
 
