@@ -145,7 +145,7 @@ export function AmyAssistant() {
           <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-card/80">
             <div className="flex items-center gap-2">
               <span className="size-9 grid place-items-center rounded-full bg-primary/15 text-primary">
-                <Bot className="size-5" />
+                <span className="text-lg leading-none" role="img" aria-label="Amy">👩🏻</span>
               </span>
               <div className="leading-tight">
                 <div className="font-semibold text-sm">Amy</div>
