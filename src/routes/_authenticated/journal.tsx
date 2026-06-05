@@ -188,3 +188,96 @@ function CloseInline({ onSave }: { onSave: (pnl: number, status: "win" | "loss" 
     </span>
   );
 }
+
+function EditTradeDialog({
+  trade,
+  onClose,
+  onSave,
+}: {
+  trade: any | null;
+  onClose: () => void;
+  onSave: (data: any) => void;
+}) {
+  const [f, setF] = useState({
+    pair: "EUR/USD", direction: "buy", entry: "", stop_loss: "", take_profit: "",
+    lot_size: "0.01", pnl_usd: "0", status: "open", notes: "",
+  });
+
+  useEffect(() => {
+    if (trade) {
+      setF({
+        pair: trade.pair ?? "EUR/USD",
+        direction: trade.direction ?? "buy",
+        entry: String(trade.entry ?? ""),
+        stop_loss: trade.stop_loss != null ? String(trade.stop_loss) : "",
+        take_profit: trade.take_profit != null ? String(trade.take_profit) : "",
+        lot_size: String(trade.lot_size ?? "0.01"),
+        pnl_usd: String(trade.pnl_usd ?? "0"),
+        status: trade.status ?? "open",
+        notes: trade.notes ?? "",
+      });
+    }
+  }, [trade]);
+
+  return (
+    <Dialog open={!!trade} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="bg-card">
+        <DialogHeader><DialogTitle>Edit trade</DialogTitle></DialogHeader>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Pair">
+            <Select value={f.pair} onValueChange={(v) => setF({ ...f, pair: v })}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>{PAIRS.map((p) => <SelectItem key={p} value={p}>{p}</SelectItem>)}</SelectContent>
+            </Select>
+          </Field>
+          <Field label="Direction">
+            <Select value={f.direction} onValueChange={(v) => setF({ ...f, direction: v })}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="buy">Buy</SelectItem><SelectItem value="sell">Sell</SelectItem>
+              </SelectContent>
+            </Select>
+          </Field>
+          <Field label="Entry"><Input type="number" step="0.00001" value={f.entry} onChange={(e) => setF({ ...f, entry: e.target.value })} /></Field>
+          <Field label="Lot size"><Input type="number" step="0.01" value={f.lot_size} onChange={(e) => setF({ ...f, lot_size: e.target.value })} /></Field>
+          <Field label="Stop loss"><Input type="number" step="0.00001" value={f.stop_loss} onChange={(e) => setF({ ...f, stop_loss: e.target.value })} /></Field>
+          <Field label="Take profit"><Input type="number" step="0.00001" value={f.take_profit} onChange={(e) => setF({ ...f, take_profit: e.target.value })} /></Field>
+          <Field label="Status">
+            <Select value={f.status} onValueChange={(v) => setF({ ...f, status: v })}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="open">Open</SelectItem>
+                <SelectItem value="win">Win</SelectItem>
+                <SelectItem value="loss">Loss</SelectItem>
+                <SelectItem value="breakeven">Breakeven</SelectItem>
+              </SelectContent>
+            </Select>
+          </Field>
+          <Field label="P&L ($)"><Input type="number" step="0.01" value={f.pnl_usd} onChange={(e) => setF({ ...f, pnl_usd: e.target.value })} /></Field>
+          <div className="col-span-2">
+            <Field label="Notes"><Textarea value={f.notes} onChange={(e) => setF({ ...f, notes: e.target.value })} rows={2} /></Field>
+          </div>
+        </div>
+        <Button
+          onClick={() =>
+            onSave({
+              id: trade.id,
+              pair: f.pair,
+              direction: f.direction,
+              entry: Number(f.entry),
+              stop_loss: f.stop_loss ? Number(f.stop_loss) : null,
+              take_profit: f.take_profit ? Number(f.take_profit) : null,
+              lot_size: Number(f.lot_size) || 0.01,
+              pnl_usd: Number(f.pnl_usd) || 0,
+              status: f.status,
+              notes: f.notes || null,
+            })
+          }
+          disabled={!f.entry}
+        >
+          Save changes
+        </Button>
+      </DialogContent>
+    </Dialog>
+  );
+}
