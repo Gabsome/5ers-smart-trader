@@ -56,7 +56,7 @@ export function AmyAssistant() {
   const speak = useServerFn(speakAmy);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const recognitionRef = useRef<any>(null);
+  const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
   const { data: messages = [] } = useQuery({
@@ -97,14 +97,22 @@ export function AmyAssistant() {
         audioRef.current.onerror = () => {
           const fallback = playBrowserVoice(text);
           if (!fallback) setSpeaking(false);
-          setVoiceNotice(fallback ? "Using your browser voice for now." : "Voice playback failed in this browser.");
+          setVoiceNotice(
+            fallback
+              ? "Using your browser voice for now."
+              : "Voice playback failed in this browser.",
+          );
         };
         audioRef.current.src = `data:audio/mpeg;base64,${audio}`;
         await audioRef.current.play();
       }
-    } catch (e: any) {
+    } catch (e: unknown) {
       const fallback = playBrowserVoice(text);
-      setVoiceNotice(fallback ? "Using your browser voice for now." : e?.message || "Voice is not configured yet.");
+      setVoiceNotice(
+        fallback
+          ? "Using your browser voice for now."
+          : errorMessage(e, "Voice is not configured yet."),
+      );
       if (!fallback) setSpeaking(false);
     }
   }
@@ -123,13 +131,13 @@ export function AmyAssistant() {
       const res = await send({ data: { message: content } });
       await qc.invalidateQueries({ queryKey: ["amy-messages"] });
       playVoice(res.reply);
-    } catch (e: any) {
+    } catch (e: unknown) {
       qc.setQueryData<Msg[]>(["amy-messages"], (old = []) => [
         ...old,
         {
           id: `err-${Date.now()}`,
           role: "assistant",
-          content: e?.message || "Sorry, something went wrong. Please try again.",
+          content: errorMessage(e, "Sorry, something went wrong. Please try again."),
           created_at: new Date().toISOString(),
         },
       ]);
@@ -153,7 +161,7 @@ export function AmyAssistant() {
     rec.lang = "en-US";
     rec.interimResults = false;
     rec.continuous = false;
-    rec.onresult = (ev: any) => {
+    rec.onresult = (ev) => {
       const transcript = ev.results[0][0].transcript;
       setListening(false);
       handleSend(transcript);
