@@ -59,7 +59,7 @@ function Settings() {
           <Field label="Display name"><Input value={form.display_name} onChange={(e) => setForm({ ...form, display_name: e.target.value })} /></Field>
           <Field label="Current mode"><Input value={profile?.current_mode ?? ""} disabled /></Field>
           <Field label="Starting balance ($)"><Input type="number" value={form.starting_balance} onChange={(e) => setForm({ ...form, starting_balance: e.target.value })} /></Field>
-          <Field label="Current balance ($)"><Input type="number" value={form.current_balance} onChange={(e) => setForm({ ...form, current_balance: e.target.value })} /></Field>
+          <Field label="Current balance ($)"><Input type="number" value={Number(profile?.current_balance ?? 0).toFixed(2)} disabled /></Field>
           <Field label="Daily goal ($)"><Input type="number" value={form.daily_goal_usd} onChange={(e) => setForm({ ...form, daily_goal_usd: e.target.value })} /></Field>
           <Field label="Profit target ($)"><Input type="number" value={form.profit_target_usd} onChange={(e) => setForm({ ...form, profit_target_usd: e.target.value })} /></Field>
           <Field label="Risk per trade (%)"><Input type="number" step="0.1" value={form.risk_per_trade_pct} onChange={(e) => setForm({ ...form, risk_per_trade_pct: e.target.value })} /></Field>
