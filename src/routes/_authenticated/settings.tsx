@@ -79,6 +79,9 @@ function Settings() {
           dashboard target card auto-tracks your balance growth toward it. See the <strong className="text-foreground">Guide</strong> tab for the full how-to and required documents.
         </p>
         <p className="mt-3">
+          Your <strong className="text-foreground">Current balance</strong> is calculated automatically as your starting balance plus the realized profit/loss of your closed trades, so it always matches the dashboard balance and equity curve. To correct a value (e.g. you used a different lot size), edit that trade in the <strong className="text-foreground">Journal</strong> — the dashboard updates in real time.
+        </p>
+        <p className="mt-3">
           This dashboard does <strong className="text-foreground">not</strong> place trades on your broker — log entries here after you execute them on the broker so tracking stays accurate.
         </p>
       </div>
