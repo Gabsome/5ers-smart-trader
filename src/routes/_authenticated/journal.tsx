@@ -28,6 +28,7 @@ function Journal() {
   const trades = useQuery({ queryKey: ["trades"], queryFn: () => lFn(), refetchInterval: 30_000 });
 
   const [open, setOpen] = useState(false);
+  const [editTrade, setEditTrade] = useState<any | null>(null);
   const [form, setForm] = useState({
     pair: "EUR/USD", direction: "buy" as "buy" | "sell", entry: "", stop_loss: "", take_profit: "",
     lot_size: "0.01", pnl_usd: "0", status: "open" as const, notes: "",
