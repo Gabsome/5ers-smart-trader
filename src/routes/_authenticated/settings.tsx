@@ -16,8 +16,11 @@ export const Route = createFileRoute("/_authenticated/settings")({
 function Settings() {
   const gFn = useServerFn(getProfile);
   const uFn = useServerFn(updateProfile);
+  const dFn = useServerFn(getDashboard);
   const qc = useQueryClient();
   const { data: profile } = useQuery({ queryKey: ["profile"], queryFn: () => gFn() });
+  const { data: dash } = useQuery({ queryKey: ["dashboard"], queryFn: () => dFn(), refetchInterval: 15_000 });
+
 
   const [form, setForm] = useState({ starting_balance: "2500", daily_goal_usd: "20", profit_target_usd: "200", risk_per_trade_pct: "0.5", display_name: "" });
   useEffect(() => {
