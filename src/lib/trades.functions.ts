@@ -161,7 +161,7 @@ export const updateProfile = createServerFn({ method: "POST" })
   .inputValidator(
     z.object({
       current_mode: z.enum(["challenge", "verification", "funded", "demo"]).optional(),
-      starting_balance: z.number().min(100).max(1_000_000).optional(),
+      starting_balance: z.number().min(-1_000_000).max(1_000_000).optional(),
       current_balance: z.number().min(0).max(10_000_000).optional(),
       daily_goal_usd: z.number().min(1).max(10_000).optional(),
       profit_target_usd: z.number().min(1).max(1_000_000).optional(),
