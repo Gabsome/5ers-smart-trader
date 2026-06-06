@@ -51,8 +51,8 @@ export async function generateAmyReply(
   );
 }
 
-// Amy's voice — a warm, natural female ElevenLabs voice (Sarah).
-const AMY_VOICE_ID = "EXAVITQu4vr4xnSDxMaL";
+// Amy's voice — a warm, natural, expressive female ElevenLabs voice (Jessica).
+const AMY_VOICE_ID = "cgSgspJ2msm6clMCkdW9";
 
 export async function synthesizeAmyVoice(text: string): Promise<string> {
   const apiKey = process.env.ELEVENLABS_API_KEY;
