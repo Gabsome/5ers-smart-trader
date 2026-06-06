@@ -22,27 +22,41 @@ function Settings() {
   const { data: dash } = useQuery({ queryKey: ["dashboard"], queryFn: () => dFn(), refetchInterval: 15_000 });
 
 
-  const [form, setForm] = useState({ starting_balance: "2500", daily_goal_usd: "20", profit_target_usd: "200", risk_per_trade_pct: "0.5", display_name: "" });
+  const [form, setForm] = useState({ starting_balance: "2500", current_balance: "2500", daily_goal_usd: "20", profit_target_usd: "200", risk_per_trade_pct: "0.5", display_name: "" });
   useEffect(() => {
-    if (profile) setForm({
+    if (profile) setForm((f) => ({
+      ...f,
       starting_balance: String(profile.starting_balance),
+      current_balance: f.current_balance === "2500" ? String((dash?.currentBalance ?? profile.current_balance ?? 0)) : f.current_balance,
       daily_goal_usd: String(profile.daily_goal_usd),
       profit_target_usd: String((profile as any).profit_target_usd ?? 200),
       risk_per_trade_pct: String(profile.risk_per_trade_pct),
       display_name: profile.display_name ?? "",
-    });
-  }, [profile]);
+    }));
+  }, [profile, dash]);
 
   const save = useMutation({
-    mutationFn: () => uFn({
-      data: {
-        starting_balance: Number(form.starting_balance),
-        daily_goal_usd: Number(form.daily_goal_usd),
-        profit_target_usd: Number(form.profit_target_usd),
-        risk_per_trade_pct: Number(form.risk_per_trade_pct),
-        display_name: form.display_name,
-      },
-    }),
+    mutationFn: () => {
+      // Realized P&L from closed trades (dashboard is the source of truth).
+      const realized = Number(dash?.totalPnl ?? 0);
+      const desiredBalance = Number(form.current_balance);
+      // Keep the dashboard, equity curve and balance in agreement: the dashboard
+      // computes currentBalance = starting_balance + realized P&L, so we derive
+      // the starting balance needed to land on the balance the user typed.
+      const startingBalance = Number.isFinite(desiredBalance)
+        ? desiredBalance - realized
+        : Number(form.starting_balance);
+      return uFn({
+        data: {
+          starting_balance: startingBalance,
+          current_balance: desiredBalance,
+          daily_goal_usd: Number(form.daily_goal_usd),
+          profit_target_usd: Number(form.profit_target_usd),
+          risk_per_trade_pct: Number(form.risk_per_trade_pct),
+          display_name: form.display_name,
+        },
+      });
+    },
     onSuccess: () => {
       toast.success("Settings saved");
       qc.invalidateQueries({ queryKey: ["profile"] });
