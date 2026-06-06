@@ -22,27 +22,41 @@ function Settings() {
   const { data: dash } = useQuery({ queryKey: ["dashboard"], queryFn: () => dFn(), refetchInterval: 15_000 });
 
 
-  const [form, setForm] = useState({ starting_balance: "2500", daily_goal_usd: "20", profit_target_usd: "200", risk_per_trade_pct: "0.5", display_name: "" });
+  const [form, setForm] = useState({ starting_balance: "2500", current_balance: "2500", daily_goal_usd: "20", profit_target_usd: "200", risk_per_trade_pct: "0.5", display_name: "" });
   useEffect(() => {
-    if (profile) setForm({
+    if (profile) setForm((f) => ({
+      ...f,
       starting_balance: String(profile.starting_balance),
+      current_balance: f.current_balance === "2500" ? String((dash?.currentBalance ?? profile.current_balance ?? 0)) : f.current_balance,
       daily_goal_usd: String(profile.daily_goal_usd),
       profit_target_usd: String((profile as any).profit_target_usd ?? 200),
       risk_per_trade_pct: String(profile.risk_per_trade_pct),
       display_name: profile.display_name ?? "",
-    });
-  }, [profile]);
+    }));
+  }, [profile, dash]);
 
   const save = useMutation({
-    mutationFn: () => uFn({
-      data: {
-        starting_balance: Number(form.starting_balance),
-        daily_goal_usd: Number(form.daily_goal_usd),
-        profit_target_usd: Number(form.profit_target_usd),
-        risk_per_trade_pct: Number(form.risk_per_trade_pct),
-        display_name: form.display_name,
-      },
-    }),
+    mutationFn: () => {
+      // Realized P&L from closed trades (dashboard is the source of truth).
+      const realized = Number(dash?.totalPnl ?? 0);
+      const desiredBalance = Number(form.current_balance);
+      // Keep the dashboard, equity curve and balance in agreement: the dashboard
+      // computes currentBalance = starting_balance + realized P&L, so we derive
+      // the starting balance needed to land on the balance the user typed.
+      const startingBalance = Number.isFinite(desiredBalance)
+        ? desiredBalance - realized
+        : Number(form.starting_balance);
+      return uFn({
+        data: {
+          starting_balance: startingBalance,
+          current_balance: desiredBalance,
+          daily_goal_usd: Number(form.daily_goal_usd),
+          profit_target_usd: Number(form.profit_target_usd),
+          risk_per_trade_pct: Number(form.risk_per_trade_pct),
+          display_name: form.display_name,
+        },
+      });
+    },
     onSuccess: () => {
       toast.success("Settings saved");
       qc.invalidateQueries({ queryKey: ["profile"] });
@@ -62,7 +76,7 @@ function Settings() {
           <Field label="Display name"><Input value={form.display_name} onChange={(e) => setForm({ ...form, display_name: e.target.value })} /></Field>
           <Field label="Current mode"><Input value={profile?.current_mode ?? ""} disabled /></Field>
           <Field label="Starting balance ($)"><Input type="number" value={form.starting_balance} onChange={(e) => setForm({ ...form, starting_balance: e.target.value })} /></Field>
-          <Field label="Current balance ($)"><Input type="number" value={Number(dash?.currentBalance ?? profile?.current_balance ?? 0).toFixed(2)} disabled /></Field>
+          <Field label="Current balance ($)"><Input type="number" value={form.current_balance} onChange={(e) => setForm({ ...form, current_balance: e.target.value })} /></Field>
           <Field label="Daily goal ($)"><Input type="number" value={form.daily_goal_usd} onChange={(e) => setForm({ ...form, daily_goal_usd: e.target.value })} /></Field>
           <Field label="Profit target ($)"><Input type="number" value={form.profit_target_usd} onChange={(e) => setForm({ ...form, profit_target_usd: e.target.value })} /></Field>
           <Field label="Risk per trade (%)"><Input type="number" step="0.1" value={form.risk_per_trade_pct} onChange={(e) => setForm({ ...form, risk_per_trade_pct: e.target.value })} /></Field>
@@ -82,7 +96,7 @@ function Settings() {
           dashboard target card auto-tracks your balance growth toward it. See the <strong className="text-foreground">Guide</strong> tab for the full how-to and required documents.
         </p>
         <p className="mt-3">
-          Your <strong className="text-foreground">Current balance</strong> is calculated automatically as your starting balance plus the realized profit/loss of your closed trades, so it always matches the dashboard balance and equity curve. To correct a value (e.g. you used a different lot size), edit that trade in the <strong className="text-foreground">Journal</strong> — the dashboard updates in real time.
+          You can set your <strong className="text-foreground">Current balance</strong> directly here — when you save, the whole dashboard, the profit target and the equity curve adjust to agree with it instantly. Your closed-trade profit/loss is preserved, so future trades keep updating the balance correctly. You can also fine-tune an individual trade in the <strong className="text-foreground">Journal</strong> if a specific entry was off.
         </p>
         <p className="mt-3">
           This dashboard does <strong className="text-foreground">not</strong> place trades on your broker — log entries here after you execute them on the broker so tracking stays accurate.
