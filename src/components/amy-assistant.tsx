@@ -25,6 +25,8 @@ type SpeechRecognitionLike = {
 };
 
 type SpeechRecognitionConstructor = new () => SpeechRecognitionLike;
+type AudioContextWindow = Window &
+  typeof globalThis & { webkitAudioContext?: typeof AudioContext };
 
 function errorMessage(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback;
@@ -38,6 +40,19 @@ function getSpeechRecognition(): SpeechRecognitionConstructor | null {
     webkitSpeechRecognition?: SpeechRecognitionConstructor;
   };
   return speechWindow.SpeechRecognition || speechWindow.webkitSpeechRecognition || null;
+}
+
+function getAudioContextConstructor() {
+  if (typeof window === "undefined") return null;
+  const audioWindow = window as AudioContextWindow;
+  return audioWindow.AudioContext || audioWindow.webkitAudioContext || null;
+}
+
+function base64ToArrayBuffer(base64: string) {
+  const binary = window.atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+  return bytes.buffer;
 }
 
 export function AmyAssistant() {
@@ -56,6 +71,8 @@ export function AmyAssistant() {
   const speak = useServerFn(speakAmy);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const audioSourceRef = useRef<AudioBufferSourceNode | null>(null);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
@@ -69,13 +86,51 @@ export function AmyAssistant() {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [messages, sending, open]);
 
-  async function playVoice(text: string) {
+  async function primeVoicePlayback() {
+    const AudioContextCtor = getAudioContextConstructor();
+    if (!AudioContextCtor) return null;
+    const ctx = audioContextRef.current ?? new AudioContextCtor();
+    audioContextRef.current = ctx;
+    if (ctx.state === "suspended") await ctx.resume();
+    return ctx;
+  }
+
+  function stopCurrentVoice() {
+    try {
+      audioSourceRef.current?.stop();
+    } catch {
+      // Already stopped.
+    }
+    audioSourceRef.current = null;
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.removeAttribute("src");
+    }
+  }
+
+  async function playVoice(text: string, primedContext?: Promise<AudioContext | null>) {
     if (!voiceOn) return;
     setVoiceNotice(null);
     try {
       setSpeaking(true);
+      const contextPromise = primedContext ?? primeVoicePlayback().catch(() => null);
       const { audio } = await speak({ data: { text: text.slice(0, 2400) } });
+      const ctx = await contextPromise;
+
+      if (ctx && ctx.state !== "closed") {
+        stopCurrentVoice();
+        const decoded = await ctx.decodeAudioData(base64ToArrayBuffer(audio));
+        const source = ctx.createBufferSource();
+        source.buffer = decoded;
+        source.connect(ctx.destination);
+        source.onended = () => setSpeaking(false);
+        audioSourceRef.current = source;
+        source.start(0);
+        return;
+      }
+
       if (audioRef.current) {
+        stopCurrentVoice();
         audioRef.current.onended = () => setSpeaking(false);
         audioRef.current.onerror = () => {
           setSpeaking(false);
@@ -100,6 +155,7 @@ export function AmyAssistant() {
   async function handleSend(text?: string) {
     const content = (text ?? input).trim();
     if (!content || sending) return;
+    const voicePrime = voiceOn ? primeVoicePlayback().catch(() => null) : undefined;
     setInput("");
     setSending(true);
     // optimistic user bubble
@@ -110,7 +166,7 @@ export function AmyAssistant() {
     try {
       const res = await send({ data: { message: content } });
       await qc.invalidateQueries({ queryKey: ["amy-messages"] });
-      playVoice(res.reply);
+      void playVoice(res.reply, voicePrime);
     } catch (e: unknown) {
       qc.setQueryData<Msg[]>(["amy-messages"], (old = []) => [
         ...old,
@@ -138,6 +194,7 @@ export function AmyAssistant() {
       return;
     }
     const rec = new SR();
+    if (voiceOn) void primeVoicePlayback();
     rec.lang = "en-US";
     rec.interimResults = false;
     rec.continuous = false;
@@ -250,7 +307,10 @@ export function AmyAssistant() {
                   {m.role === "assistant" && voiceOn && (
                     <button
                       type="button"
-                      onClick={() => playVoice(m.content)}
+                      onClick={() => {
+                        const voicePrime = primeVoicePlayback().catch(() => null);
+                        void playVoice(m.content, voicePrime);
+                      }}
                       className="mt-2 flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground"
                       aria-label="Play Amy's voice"
                     >
