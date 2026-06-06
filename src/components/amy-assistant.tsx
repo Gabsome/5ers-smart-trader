@@ -69,23 +69,6 @@ export function AmyAssistant() {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [messages, sending, open]);
 
-  function playBrowserVoice(text: string) {
-    if (typeof window === "undefined" || !("speechSynthesis" in window)) return false;
-    window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(text.slice(0, 900));
-    const voices = window.speechSynthesis.getVoices();
-    utterance.voice =
-      voices.find((v) => /female|samantha|victoria|zira|susan|aria|jenny|sonia/i.test(v.name)) ??
-      voices.find((v) => v.lang?.startsWith("en")) ??
-      null;
-    utterance.rate = 0.95;
-    utterance.pitch = 1.05;
-    utterance.onend = () => setSpeaking(false);
-    utterance.onerror = () => setSpeaking(false);
-    window.speechSynthesis.speak(utterance);
-    return true;
-  }
-
   async function playVoice(text: string) {
     if (!voiceOn) return;
     setVoiceNotice(null);
@@ -95,25 +78,22 @@ export function AmyAssistant() {
       if (audioRef.current) {
         audioRef.current.onended = () => setSpeaking(false);
         audioRef.current.onerror = () => {
-          const fallback = playBrowserVoice(text);
-          if (!fallback) setSpeaking(false);
-          setVoiceNotice(
-            fallback
-              ? "Using your browser voice for now."
-              : "Voice playback failed in this browser.",
-          );
+          setSpeaking(false);
+          setVoiceNotice('Tap "Play voice" to hear Amy.');
         };
         audioRef.current.src = `data:audio/mpeg;base64,${audio}`;
         await audioRef.current.play();
       }
     } catch (e: unknown) {
-      const fallback = playBrowserVoice(text);
-      setVoiceNotice(
-        fallback
-          ? "Using your browser voice for now."
-          : errorMessage(e, "Voice is not configured yet."),
-      );
-      if (!fallback) setSpeaking(false);
+      setSpeaking(false);
+      // Autoplay is often blocked until the user interacts — that's not an error,
+      // they can use the "Play voice" button. Only surface real config issues.
+      const msg = errorMessage(e, "");
+      if (/not configured|voice error|api/i.test(msg)) {
+        setVoiceNotice("Voice isn't available right now.");
+      } else {
+        setVoiceNotice('Tap "Play voice" to hear Amy.');
+      }
     }
   }
 
