@@ -160,7 +160,7 @@ export function AmyAssistant() {
     utterance.onerror = () => setSpeaking(false);
     speechUtteranceRef.current = utterance;
     window.speechSynthesis.speak(utterance);
-    setVoiceNotice("ElevenLabs was blocked, so Amy used your browser voice this time.");
+    setVoiceNotice("Amy used your browser voice fallback this time.");
     return true;
   }
 
