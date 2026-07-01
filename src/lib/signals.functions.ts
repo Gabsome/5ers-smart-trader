@@ -278,6 +278,11 @@ export const getDailyPick = createServerFn({ method: "POST" })
       lot = Math.max(0.01, lot);
       const lotCapped = rawLot > maxLot;
       const actualRiskUsd = Math.round(lot * slPips * dpp);
+      if (rawLot < 0.01 || actualRiskUsd > data.riskUsd * 1.05) {
+        // If the broker minimum lot would risk more than allowed, skip it.
+        // A prop-firm challenge survives by passing on oversized-risk setups.
+        continue;
+      }
       const tpPips = data.targetUsd / (lot * dpp);
       const tpDistance = tpPips * pip;
 
