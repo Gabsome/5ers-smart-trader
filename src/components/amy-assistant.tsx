@@ -193,6 +193,7 @@ export function AmyAssistant() {
       // Autoplay is often blocked until the user interacts — that's not an error,
       // they can use the "Play voice" button. Only surface real config issues.
       const msg = errorMessage(e, "");
+      if (playWithBrowserSpeech(text)) return;
       if (/not configured|voice error|api/i.test(msg)) {
         setVoiceNotice("Voice isn't available right now.");
       } else {
