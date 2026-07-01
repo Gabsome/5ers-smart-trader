@@ -23,7 +23,10 @@ function LoginPage() {
   const signIn = async () => {
     setBusy(true);
     try {
-      const result = await lovable.auth.signInWithOAuth("google", { redirect_uri: window.location.origin });
+      const result = await lovable.auth.signInWithOAuth("google", {
+        redirect_uri: window.location.origin,
+        extraParams: { prompt: "select_account" },
+      });
       if (result.error) {
         toast.error("Sign-in failed", { description: result.error.message });
         setBusy(false);

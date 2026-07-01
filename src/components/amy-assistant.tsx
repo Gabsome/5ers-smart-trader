@@ -55,6 +55,10 @@ function base64ToArrayBuffer(base64: string) {
   return bytes.buffer;
 }
 
+function canUseBrowserSpeech() {
+  return typeof window !== "undefined" && "speechSynthesis" in window && "SpeechSynthesisUtterance" in window;
+}
+
 export function AmyAssistant() {
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState("");
@@ -74,6 +78,7 @@ export function AmyAssistant() {
   const audioContextRef = useRef<AudioContext | null>(null);
   const audioSourceRef = useRef<AudioBufferSourceNode | null>(null);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
+  const speechUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
   const { data: messages = [] } = useQuery({
@@ -105,7 +110,58 @@ export function AmyAssistant() {
     if (audioRef.current) {
       audioRef.current.pause();
       audioRef.current.removeAttribute("src");
+      audioRef.current.load();
     }
+    if (canUseBrowserSpeech()) {
+      window.speechSynthesis.cancel();
+    }
+  }
+
+  async function playWithAudioContext(audio: string, ctx: AudioContext | null) {
+    if (!ctx || ctx.state === "closed") return false;
+    if (ctx.state === "suspended") await ctx.resume();
+    stopCurrentVoice();
+    const decoded = await ctx.decodeAudioData(base64ToArrayBuffer(audio));
+    const source = ctx.createBufferSource();
+    source.buffer = decoded;
+    source.connect(ctx.destination);
+    source.onended = () => setSpeaking(false);
+    audioSourceRef.current = source;
+    source.start(ctx.currentTime + 0.05);
+    return true;
+  }
+
+  async function playWithAudioElement(audio: string) {
+    if (!audioRef.current) return false;
+    stopCurrentVoice();
+    audioRef.current.onended = () => setSpeaking(false);
+    audioRef.current.onerror = () => {
+      setSpeaking(false);
+      setVoiceNotice('Tap "Play voice" to hear Amy.');
+    };
+    audioRef.current.src = `data:audio/mpeg;base64,${audio}`;
+    audioRef.current.load();
+    await audioRef.current.play();
+    return true;
+  }
+
+  function playWithBrowserSpeech(text: string) {
+    if (!canUseBrowserSpeech()) return false;
+    stopCurrentVoice();
+    setSpeaking(true);
+    const utterance = new SpeechSynthesisUtterance(text.slice(0, 700));
+    const voices = window.speechSynthesis.getVoices();
+    const femaleVoice = voices.find((v) => /female|jenny|aria|samantha|victoria|zira|google us english/i.test(v.name));
+    if (femaleVoice) utterance.voice = femaleVoice;
+    utterance.rate = 0.96;
+    utterance.pitch = 1.04;
+    utterance.volume = 1;
+    utterance.onend = () => setSpeaking(false);
+    utterance.onerror = () => setSpeaking(false);
+    speechUtteranceRef.current = utterance;
+    window.speechSynthesis.speak(utterance);
+    setVoiceNotice("Amy used your browser voice fallback this time.");
+    return true;
   }
 
   async function playVoice(text: string, primedContext?: Promise<AudioContext | null>) {
@@ -116,34 +172,29 @@ export function AmyAssistant() {
       const contextPromise = primedContext ?? primeVoicePlayback().catch(() => null);
       const { audio } = await speak({ data: { text: text.slice(0, 2400) } });
       const ctx = await contextPromise;
+      try {
+        if (await playWithAudioContext(audio, ctx)) return;
+      } catch (webAudioError) {
+        console.warn("Amy WebAudio playback failed; trying native audio", webAudioError);
+      }
 
-      if (ctx && ctx.state !== "closed") {
-        stopCurrentVoice();
-        const decoded = await ctx.decodeAudioData(base64ToArrayBuffer(audio));
-        const source = ctx.createBufferSource();
-        source.buffer = decoded;
-        source.connect(ctx.destination);
-        source.onended = () => setSpeaking(false);
-        audioSourceRef.current = source;
-        source.start(0);
+      try {
+        if (await playWithAudioElement(audio)) return;
+      } catch (nativeAudioError) {
+        console.warn("Amy native audio playback failed; trying browser speech", nativeAudioError);
+      }
+
+      if (playWithBrowserSpeech(text)) {
         return;
       }
 
-      if (audioRef.current) {
-        stopCurrentVoice();
-        audioRef.current.onended = () => setSpeaking(false);
-        audioRef.current.onerror = () => {
-          setSpeaking(false);
-          setVoiceNotice('Tap "Play voice" to hear Amy.');
-        };
-        audioRef.current.src = `data:audio/mpeg;base64,${audio}`;
-        await audioRef.current.play();
-      }
+      throw new Error("Audio playback was blocked by the browser");
     } catch (e: unknown) {
       setSpeaking(false);
       // Autoplay is often blocked until the user interacts — that's not an error,
       // they can use the "Play voice" button. Only surface real config issues.
       const msg = errorMessage(e, "");
+      if (playWithBrowserSpeech(text)) return;
       if (/not configured|voice error|api/i.test(msg)) {
         setVoiceNotice("Voice isn't available right now.");
       } else {
@@ -221,7 +272,10 @@ export function AmyAssistant() {
       {/* Launcher */}
       {!open && (
         <button
-          onClick={() => setOpen(true)}
+          onClick={() => {
+            setOpen(true);
+            if (voiceOn) void primeVoicePlayback();
+          }}
           className="fixed bottom-5 right-5 z-40 flex items-center gap-2 rounded-full bg-primary text-primary-foreground px-4 py-3 shadow-lg shadow-primary/30 hover:scale-105 transition-transform"
           aria-label="Chat with Amy"
         >
@@ -255,7 +309,12 @@ export function AmyAssistant() {
                 size="icon"
                 className="size-8"
                 title={voiceOn ? "Mute voice" : "Enable voice"}
-                onClick={() => setVoiceOn((v) => !v)}
+                onClick={() => setVoiceOn((v) => {
+                  const next = !v;
+                  if (next) void primeVoicePlayback();
+                  else stopCurrentVoice();
+                  return next;
+                })}
               >
                 {voiceOn ? <Volume2 className="size-4" /> : <VolumeX className="size-4" />}
               </Button>
