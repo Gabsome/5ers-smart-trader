@@ -97,9 +97,9 @@ export const generateSignal = createServerFn({ method: "POST" })
       try {
         const aiRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
           method: "POST",
-          headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+          headers: { "Lovable-API-Key": apiKey, "X-Lovable-AIG-SDK": "direct-fetch", "Content-Type": "application/json" },
           body: JSON.stringify({
-            model: "google/gemini-2.5-flash",
+            model: "google/gemini-3-flash-preview",
             messages: [
               {
                 role: "system",
@@ -211,15 +211,19 @@ export const getDailyPick = createServerFn({ method: "POST" })
       : pair.includes("JPY") ? Math.max(0.01, (balance / 1000) * 0.4)
       : Math.max(0.01, (balance / 1000) * 0.5);
 
-    // Multi-timeframe: trade TF + higher TF (1h) for confluence
+    // Multi-timeframe: trade TF + higher TF (1h) + macro TF (4h) for confluence.
+    // The engine only returns an A+ pick when the trade is aligned across the
+    // decision timeframe and the broader market regime.
     const htf = "1h";
+    const macroTf = "4h";
     const scans = await Promise.allSettled(
       pairs.map(async (pair) => {
-        const [ltfCandles, htfCandles] = await Promise.all([
+        const [ltfCandles, htfCandles, macroCandles] = await Promise.all([
           fetchCandles(pair, data.interval, 100),
           fetchCandles(pair, htf, 100),
+          fetchCandles(pair, macroTf, 100),
         ]);
-        return { pair, setup: detectSetup(ltfCandles), htf: detectSetup(htfCandles) };
+        return { pair, candles: ltfCandles, setup: detectSetup(ltfCandles), htf: detectSetup(htfCandles), macro: detectSetup(macroCandles) };
       }),
     );
 
@@ -228,7 +232,7 @@ export const getDailyPick = createServerFn({ method: "POST" })
 
     type Candidate = {
       pair: string; bias: "buy" | "sell"; entry: number; sl: number; tp: number;
-      slPips: number; tpPips: number; lot: number; score: number; setup: any; htf: any;
+      slPips: number; tpPips: number; lot: number; score: number; setup: any; htf: any; macro: any;
       factors: string[];
       timing: { action: "enter_now" | "wait"; order_type: "market" | "buy_limit" | "sell_limit" | "buy_stop" | "sell_stop" | "buy_stop_limit" | "sell_stop_limit"; trigger_price: number; limit_price: number | null; note: string };
       lotCapped: boolean; actualRiskUsd: number;
@@ -237,7 +241,7 @@ export const getDailyPick = createServerFn({ method: "POST" })
 
     for (const r of scans) {
       if (r.status !== "fulfilled") continue;
-      const { pair, setup, htf: htfSetup } = r.value;
+      const { pair, candles, setup, htf: htfSetup, macro: macroSetup } = r.value;
       if (!setup || !setup.bias) continue;
 
       // News guard — halt pairs with high-impact news inside the window.
@@ -280,6 +284,25 @@ export const getDailyPick = createServerFn({ method: "POST" })
       const sl = setup.bias === "buy" ? entry - slDistance : entry + slDistance;
       const tp = setup.bias === "buy" ? entry + tpDistance : entry - tpDistance;
       const fmtPrice = (n: number) => n.toFixed(pair.includes("JPY") ? 3 : pair.includes("XAU") ? 2 : 5);
+
+      const lastCandle = candles.at(-1)!;
+      const prevCandle = candles.at(-2)!;
+      const candleRange = Math.max(lastCandle.h - lastCandle.l, pip);
+      const body = Math.abs(lastCandle.c - lastCandle.o);
+      const upperWick = lastCandle.h - Math.max(lastCandle.o, lastCandle.c);
+      const lowerWick = Math.min(lastCandle.o, lastCandle.c) - lastCandle.l;
+      const closePosition = (lastCandle.c - lastCandle.l) / candleRange;
+      const rejectionOk = setup.bias === "buy"
+        ? lowerWick >= upperWick * 1.15 && closePosition >= 0.55
+        : upperWick >= lowerWick * 1.15 && closePosition <= 0.45;
+      const bodyNotDoji = body >= candleRange * 0.25;
+      const noFreshMomentumAgainst = setup.bias === "buy"
+        ? !(lastCandle.c < lastCandle.o && prevCandle.c < prevCandle.o && lastCandle.c < setup.ema20)
+        : !(lastCandle.c > lastCandle.o && prevCandle.c > prevCandle.o && lastCandle.c > setup.ema20);
+      const volRatio = setup.atr / Math.max(setup.lastClose, 1e-9);
+      const volatilityOk = pair.includes("XAU")
+        ? volRatio >= 0.00035 && volRatio <= 0.0065
+        : volRatio >= 0.00008 && volRatio <= 0.0025;
 
       // ---- Pending-order intelligence -------------------------------------
       // Decide the EXACT order type a broker needs. Two questions:
@@ -344,17 +367,37 @@ export const getDailyPick = createServerFn({ method: "POST" })
         (setup.bias === "buy" && htfSetup.trend === "up") ||
         (setup.bias === "sell" && htfSetup.trend === "down")
       );
+      const macroAligned = macroSetup && (
+        (setup.bias === "buy" && macroSetup.trend === "up") ||
+        (setup.bias === "sell" && macroSetup.trend === "down")
+      );
+      const macroNotAgainst = macroSetup && (
+        macroAligned ||
+        (setup.bias === "buy" && macroSetup.rsi >= 45) ||
+        (setup.bias === "sell" && macroSetup.rsi <= 55)
+      );
       const ltfAligned = (setup.bias === "buy" && setup.trend === "up")
         || (setup.bias === "sell" && setup.trend === "down");
       const rsiInZone = setup.bias === "buy" ? setup.rsi > 40 && setup.rsi < 65 : setup.rsi > 35 && setup.rsi < 60;
       const pullbackOk = Math.abs(setup.lastClose - setup.ema20) < setup.atr * 0.6;
       const emaSeparation = Math.abs(setup.ema20 - setup.ema50) > setup.atr * 0.3;
 
+      // Hard A+ filters. If one fails, this is not the one-or-two-trades-a-day
+      // kind of setup; the correct output is to wait, not force a signal.
+      if (!htfAligned || !macroNotAgainst || !ltfAligned || !rsiInZone || !pullbackOk || !emaSeparation || !volatilityOk || !noFreshMomentumAgainst) {
+        continue;
+      }
+
       if (htfAligned) factors.push(`H1 trend ${String(htfSetup.trend).toUpperCase()} confirms ${setup.bias.toUpperCase()} bias (top-down confluence).`);
+      if (macroAligned) factors.push(`4H trend also agrees — macro flow is not fighting the entry.`);
+      else factors.push(`4H is neutral enough by RSI (${macroSetup?.rsi?.toFixed?.(0) ?? "n/a"}); no strong macro conflict detected.`);
       if (ltfAligned) factors.push(`${data.interval} EMA20>EMA50 ${String(setup.trend).toUpperCase()} structure intact — trading with the trend.`);
       if (emaSeparation) factors.push(`EMA20/EMA50 cleanly separated (>0.3·ATR) — confirmed trend, not range chop.`);
       if (pullbackOk) factors.push(`Price pulled back to EMA20 (dynamic S/R) instead of chasing extension.`);
       if (rsiInZone) factors.push(`RSI ${setup.rsi.toFixed(0)} in healthy continuation zone (not overbought/oversold).`);
+      factors.push(`Volatility filter passed: ATR is active enough for $${data.targetUsd} but not chaotic (${(volRatio * 100).toFixed(3)}% of price).`);
+      if (rejectionOk) factors.push(`Latest candle shows directional rejection at the pullback zone — buyers/sellers defended the level.`);
+      else if (timing.action === "wait") factors.push(`No perfect rejection candle yet, so the system waits for the exact pending trigger instead of forcing market entry.`);
       factors.push(`SL (${slPips.toFixed(0)} pips) sits beyond the recent ${setup.bias === "buy" ? "swing low" : "swing high"} +0.5·ATR — price must break market structure to hit it, so it's unlikely to trigger before TP.`);
       factors.push(enterNow
         ? `Price is at the level — market entry valid right now.`
@@ -369,21 +412,24 @@ export const getDailyPick = createServerFn({ method: "POST" })
 
       // Strict A+ scoring — HTF confluence is mandatory
       const rsiSweet = setup.bias === "buy" ? 100 - Math.abs(setup.rsi - 55) : 100 - Math.abs(setup.rsi - 45);
-      let score = Math.round(rsiSweet * 0.3);
-      if (htfAligned) score += 35; else score -= 25;
-      if (ltfAligned) score += 20;
-      if (emaSeparation) score += 10;
-      if (pullbackOk) score += 10;
-      if (!rsiInZone) score -= 20;
+      let score = Math.round(rsiSweet * 0.24);
+      score += 30; // H1 alignment already hard-gated above.
+      score += macroAligned ? 16 : 8;
+      score += 14; // LTF trend hard-gated.
+      score += 10; // EMA separation hard-gated.
+      score += 8;  // Pullback hard-gated.
+      score += volatilityOk ? 7 : -20;
+      if (bodyNotDoji) score += 4;
+      if (rejectionOk) score += 6;
       // Adaptive: shift by your proven edge on this pair (smoothed, ±~12 pts).
       if (stat && stat.trades >= 3) score += Math.round((stat.edge - 50) * 0.4);
 
 
-      candidates.push({ pair, bias: setup.bias, entry, sl, tp, slPips, tpPips, lot, score, setup, htf: htfSetup, factors, timing, lotCapped, actualRiskUsd });
+      candidates.push({ pair, bias: setup.bias, entry, sl, tp, slPips, tpPips, lot, score, setup, htf: htfSetup, macro: macroSetup, factors, timing, lotCapped, actualRiskUsd });
     }
 
     // Strict A+ quality gate — no room for error
-    const MIN_SCORE = 75;
+    const MIN_SCORE = 82;
     const qualified = candidates.filter((c) => c.score >= MIN_SCORE);
     if (!qualified.length) {
       const newsNote = newsBlocked.length
@@ -413,11 +459,11 @@ export const getDailyPick = createServerFn({ method: "POST" })
       try {
         const aiRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
           method: "POST",
-          headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+          headers: { "Lovable-API-Key": apiKey, "X-Lovable-AIG-SDK": "direct-fetch", "Content-Type": "application/json" },
           body: JSON.stringify({
-            model: "google/gemini-2.5-flash",
+            model: "google/gemini-3-flash-preview",
             messages: [
-              { role: "system", content: `Senior prop-firm analyst. Context: ${MODE_BRIEFS[mode]} Plan: $${data.riskUsd} SL, $${data.targetUsd} TP. Quality over activity — if anything looks weak, lower confidence. Return JSON only {"confidence":0-100,"rationale":"<=200 chars explaining WHY this works"}.` },
+              { role: "system", content: `Senior prop-firm analyst. Context: ${MODE_BRIEFS[mode]} Plan: $${data.riskUsd} SL, $${data.targetUsd} TP. Quality over activity — if anything looks weak, lower confidence. Return JSON only {"confidence":0-100,"rationale":"<=200 chars explaining WHY this works"}. Never invent data; only judge the supplied facts.` },
               { role: "user", content: `Pick: ${best.pair} ${best.bias.toUpperCase()} @ ${best.entry}. H1 trend ${best.htf?.trend}, ${data.interval} trend ${best.setup.trend}, RSI ${best.setup.rsi.toFixed(1)}, ATR ${best.setup.atr.toFixed(5)}. SL ${best.sl.toFixed(5)} (${best.slPips.toFixed(0)}p), TP ${best.tp.toFixed(5)} (${best.tpPips.toFixed(0)}p), lot ${best.lot}. Confluence: ${best.factors.join(" | ")}` },
             ],
           }),
