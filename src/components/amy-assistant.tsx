@@ -148,6 +148,7 @@ export function AmyAssistant() {
   function playWithBrowserSpeech(text: string) {
     if (!canUseBrowserSpeech()) return false;
     stopCurrentVoice();
+    setSpeaking(true);
     const utterance = new SpeechSynthesisUtterance(text.slice(0, 700));
     const voices = window.speechSynthesis.getVoices();
     const femaleVoice = voices.find((v) => /female|jenny|aria|samantha|victoria|zira|google us english/i.test(v.name));
