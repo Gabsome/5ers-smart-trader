@@ -1,10 +1,13 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { requireActiveSubscription } from "./subscription-guard";
 import { detectSetup, pipValue, suggestLot, type Candle } from "./indicators";
 import { fetchNewsEvents, newsGuard, summarizeTrades, type NewsEvent } from "./engine.server";
 
-const PAIRS = ["EUR/USD", "GBP/USD", "USD/JPY", "AUD/USD", "USD/CAD", "XAU/USD"];
+const PAIRS = ["EUR/USD", "GBP/USD", "USD/JPY", "AUD/USD", "USD/CAD", "XAU/USD"] as const;
+const pairSchema = z.enum(["EUR/USD", "GBP/USD", "USD/JPY", "AUD/USD", "USD/CAD", "XAU/USD"]);
+const intervalSchema = z.enum(["5min", "15min", "30min", "1h", "4h"]);
 
 async function fetchCandles(symbol: string, interval = "15min", outputsize = 100): Promise<Candle[]> {
   const key = process.env.TWELVEDATA_API_KEY;
