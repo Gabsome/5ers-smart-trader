@@ -30,11 +30,11 @@ async function fetchCandles(symbol: string, interval = "15min", outputsize = 100
 }
 
 export const getQuotes = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireActiveSubscription])
   .inputValidator(
     z.object({
-      pairs: z.array(z.string()).max(10).optional(),
-      interval: z.string().default("15min"),
+      pairs: z.array(pairSchema).max(10).optional(),
+      interval: intervalSchema.default("15min"),
     }),
   )
   .handler(async ({ data }) => {
