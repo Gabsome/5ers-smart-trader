@@ -5,6 +5,7 @@ import { Send, X, Mic, MicOff, Volume2, VolumeX, Trash2, Loader2 } from "lucide-
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { listAmyMessages, sendAmyMessage, clearAmyMessages, speakAmy } from "@/lib/amy.functions";
+import { supabase } from "@/integrations/supabase/client";
 
 type Msg = { id: string; role: "user" | "assistant"; content: string; created_at: string };
 const AMY_AVATAR = "👩🏽";
