@@ -173,14 +173,98 @@ export function AmyAssistant() {
     return true;
   }
 
+  // Stream Amy's voice as PCM so she starts talking almost the instant her
+  // reply lands — chunks are scheduled on the audio clock as they arrive.
+  async function streamVoicePcm(text: string, ctx: AudioContext | null) {
+    if (!ctx || ctx.state === "closed") return false;
+    if (ctx.state === "suspended") await ctx.resume();
+
+    const { data: sess } = await supabase.auth.getSession();
+    const token = sess.session?.access_token;
+    if (!token) return false;
+
+    const res = await fetch("/api/amy-voice", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ text: text.slice(0, 2400) }),
+    });
+    if (!res.ok || !res.body) return false;
+
+    const sampleRate = Number(res.headers.get("X-Sample-Rate")) || 24000;
+    stopCurrentVoice();
+    setSpeaking(true);
+
+    let playhead = 0;
+    let leftover = new Uint8Array(0);
+    let started = false;
+    let ended = false;
+    const scheduleEnd = () => {
+      if (ended) return;
+      const remaining = playhead - ctx.currentTime;
+      window.setTimeout(() => setSpeaking(false), Math.max(0, remaining * 1000) + 120);
+    };
+
+    const pushChunk = (incoming: Uint8Array) => {
+      const merged = new Uint8Array(leftover.length + incoming.length);
+      merged.set(leftover);
+      merged.set(incoming, leftover.length);
+      const usable = merged.length - (merged.length % 2);
+      leftover = merged.slice(usable);
+      if (usable === 0) return;
+      const samples = new Int16Array(merged.buffer, 0, usable / 2);
+      const floats = Float32Array.from(samples, (s) => s / 32768);
+      const buffer = ctx.createBuffer(1, floats.length, sampleRate);
+      buffer.copyToChannel(floats, 0);
+      const source = ctx.createBufferSource();
+      source.buffer = buffer;
+      source.connect(ctx.destination);
+      audioSourceRef.current = source;
+      if (!started) {
+        playhead = ctx.currentTime + 0.06;
+        started = true;
+      } else {
+        playhead = Math.max(playhead, ctx.currentTime);
+      }
+      source.start(playhead);
+      playhead += buffer.duration;
+    };
+
+    const reader = res.body.getReader();
+    try {
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        if (value) pushChunk(value);
+      }
+    } catch (err) {
+      console.warn("Amy voice stream interrupted", err);
+    }
+    ended = false;
+    scheduleEnd();
+    ended = true;
+    return started;
+  }
+
   async function playVoice(text: string, primedContext?: Promise<AudioContext | null>) {
     if (!voiceOn) return;
     setVoiceNotice(null);
     try {
       setSpeaking(true);
       const contextPromise = primedContext ?? primeVoicePlayback().catch(() => null);
-      const { audio } = await speak({ data: { text: text.slice(0, 2400) } });
       const ctx = await contextPromise;
+
+      // Fast path: stream PCM and start playing immediately.
+      try {
+        if (await streamVoicePcm(text, ctx)) return;
+      } catch (streamError) {
+        console.warn("Amy streaming voice failed; falling back", streamError);
+      }
+
+      // Fallback: buffered clip via the server function.
+      const { audio } = await speak({ data: { text: text.slice(0, 2400) } });
       try {
         if (await playWithAudioContext(audio, ctx)) return;
       } catch (webAudioError) {
