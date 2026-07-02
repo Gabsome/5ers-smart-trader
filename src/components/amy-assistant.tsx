@@ -147,14 +147,22 @@ export function AmyAssistant() {
 
   function playWithBrowserSpeech(text: string) {
     if (!canUseBrowserSpeech()) return false;
+    const voices = window.speechSynthesis.getVoices();
+    // Female-only: pick a known female voice; if the browser exposes none,
+    // do NOT speak (never fall back to a male voice).
+    const femaleVoice =
+      voices.find((v) =>
+        /female|woman|jenny|aria|samantha|victoria|zira|susan|karen|tessa|fiona|moira|serena|allison|ava|google us english/i.test(
+          v.name,
+        ),
+      ) ?? null;
+    if (!femaleVoice) return false;
     stopCurrentVoice();
     setSpeaking(true);
     const utterance = new SpeechSynthesisUtterance(text.slice(0, 700));
-    const voices = window.speechSynthesis.getVoices();
-    const femaleVoice = voices.find((v) => /female|jenny|aria|samantha|victoria|zira|google us english/i.test(v.name));
-    if (femaleVoice) utterance.voice = femaleVoice;
-    utterance.rate = 0.96;
-    utterance.pitch = 1.04;
+    utterance.voice = femaleVoice;
+    utterance.rate = 1.0;
+    utterance.pitch = 1.08;
     utterance.volume = 1;
     utterance.onend = () => setSpeaking(false);
     utterance.onerror = () => setSpeaking(false);
