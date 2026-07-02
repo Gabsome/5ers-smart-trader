@@ -419,15 +419,16 @@ export const getDailyPick = createServerFn({ method: "POST" })
         factors.push(`Your edge: ${stat.winRate}% win rate on ${pair} (${stat.trades} trades) — the engine weights this.`);
       }
 
-      // Strict A+ scoring — HTF confluence is mandatory
+      // Strict A+ scoring — HTF confluence is mandatory (already gated)
       const rsiSweet = setup.bias === "buy" ? 100 - Math.abs(setup.rsi - 55) : 100 - Math.abs(setup.rsi - 45);
       let score = Math.round(rsiSweet * 0.24);
       score += 30; // H1 alignment already hard-gated above.
-      score += macroAligned ? 16 : 8;
+      score += macroAligned ? 16 : macroNotAgainst ? 8 : -6;
       score += 14; // LTF trend hard-gated.
-      score += 10; // EMA separation hard-gated.
+      score += emaSeparation ? 10 : 2;   // graded, not gated
       score += 8;  // Pullback hard-gated.
       score += volatilityOk ? 7 : -20;
+      score += noFreshMomentumAgainst ? 4 : -6; // graded, not gated
       if (bodyNotDoji) score += 4;
       if (rejectionOk) score += 6;
       // Adaptive: shift by your proven edge on this pair (smoothed, ±~12 pts).
