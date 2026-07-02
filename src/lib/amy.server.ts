@@ -70,15 +70,16 @@ export async function synthesizeAmyVoice(text: string): Promise<string> {
       },
       body: JSON.stringify({
         text: clipped,
-        model_id: "eleven_multilingual_v2",
+        // Turbo model = much lower latency (time-to-first-byte), so Amy starts
+        // speaking almost immediately after her reply lands, while still a
+        // warm, natural, fun female voice.
+        model_id: "eleven_turbo_v2_5",
         voice_settings: {
-          // Higher stability + speaker boost removes the robotic glitches and
-          // keeps speech smooth and fluent; moderate style keeps it expressive.
-          stability: 0.6,
+          stability: 0.45,
           similarity_boost: 0.8,
-          style: 0.3,
+          style: 0.35,
           use_speaker_boost: true,
-          speed: 1.0,
+          speed: 1.05,
         },
       }),
     },

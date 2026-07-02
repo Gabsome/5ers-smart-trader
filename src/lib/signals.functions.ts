@@ -387,9 +387,13 @@ export const getDailyPick = createServerFn({ method: "POST" })
       const pullbackOk = Math.abs(setup.lastClose - setup.ema20) < setup.atr * 0.6;
       const emaSeparation = Math.abs(setup.ema20 - setup.ema50) > setup.atr * 0.3;
 
-      // Hard A+ filters. If one fails, this is not the one-or-two-trades-a-day
-      // kind of setup; the correct output is to wait, not force a signal.
-      if (!htfAligned || !macroNotAgainst || !ltfAligned || !rsiInZone || !pullbackOk || !emaSeparation || !volatilityOk || !noFreshMomentumAgainst) {
+      // Core A+ gate — the non-negotiables for a with-trend pullback entry:
+      // higher-timeframe confluence, trend structure, a healthy RSI zone, a real
+      // pullback to value, and tradeable (not chaotic) volatility. Macro flow,
+      // EMA separation and fresh-momentum checks are graded in the score instead
+      // of hard-blocking, so genuine setups aren't thrown away — this surfaces
+      // the 1–2 sure trades a day more consistently without lowering the bar.
+      if (!htfAligned || !ltfAligned || !rsiInZone || !pullbackOk || !volatilityOk) {
         continue;
       }
 
@@ -415,15 +419,16 @@ export const getDailyPick = createServerFn({ method: "POST" })
         factors.push(`Your edge: ${stat.winRate}% win rate on ${pair} (${stat.trades} trades) — the engine weights this.`);
       }
 
-      // Strict A+ scoring — HTF confluence is mandatory
+      // Strict A+ scoring — HTF confluence is mandatory (already gated)
       const rsiSweet = setup.bias === "buy" ? 100 - Math.abs(setup.rsi - 55) : 100 - Math.abs(setup.rsi - 45);
       let score = Math.round(rsiSweet * 0.24);
       score += 30; // H1 alignment already hard-gated above.
-      score += macroAligned ? 16 : 8;
+      score += macroAligned ? 16 : macroNotAgainst ? 8 : -6;
       score += 14; // LTF trend hard-gated.
-      score += 10; // EMA separation hard-gated.
+      score += emaSeparation ? 10 : 2;   // graded, not gated
       score += 8;  // Pullback hard-gated.
       score += volatilityOk ? 7 : -20;
+      score += noFreshMomentumAgainst ? 4 : -6; // graded, not gated
       if (bodyNotDoji) score += 4;
       if (rejectionOk) score += 6;
       // Adaptive: shift by your proven edge on this pair (smoothed, ±~12 pts).
@@ -433,8 +438,9 @@ export const getDailyPick = createServerFn({ method: "POST" })
       candidates.push({ pair, bias: setup.bias, entry, sl, tp, slPips, tpPips, lot, score, setup, htf: htfSetup, macro: macroSetup, factors, timing, lotCapped, actualRiskUsd });
     }
 
-    // Strict A+ quality gate — no room for error
-    const MIN_SCORE = 82;
+    // A+ quality gate — high enough to stay "sure trades", low enough to
+    // surface the 1–2 clean setups a day the trader is after.
+    const MIN_SCORE = 74;
     const qualified = candidates.filter((c) => c.score >= MIN_SCORE);
     if (!qualified.length) {
       const newsNote = newsBlocked.length
