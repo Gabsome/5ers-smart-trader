@@ -10,13 +10,14 @@ import {
   summarizeTrades,
   type NewsEvent,
 } from "./engine.server";
+import { requireActiveSubscription } from "./subscription-guard";
 
 /**
  * Scans the user's OPEN trades against live price and auto-closes any that
  * hit TP (win) or SL (loss), updating the account balance in one pass.
  */
 export const reconcileTrades = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireActiveSubscription])
   .handler(async ({ context }) => {
     const { supabase, userId } = context;
     const { data: open } = await supabase
@@ -80,7 +81,7 @@ export const getPerformanceStats = createServerFn({ method: "GET" })
 
 /** Upcoming high-impact economic events relevant to the watched pairs. */
 export const getNews = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireActiveSubscription])
   .inputValidator(
     z.object({
       pairs: z.array(z.string()).max(20).optional(),

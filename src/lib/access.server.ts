@@ -30,6 +30,22 @@ export function isFreeEmail(email?: string | null): boolean {
   return list.includes(email.trim().toLowerCase());
 }
 
+// Returns true if the account has an active paid subscription OR is a free-tier email.
+export async function hasActiveSubscription(
+  supabase: { from: (t: string) => any },
+  userId: string,
+  email?: string | null,
+): Promise<boolean> {
+  if (isFreeEmail(email)) return true;
+  const { data } = await supabase
+    .from("subscriptions")
+    .select("status,current_period_end")
+    .eq("user_id", userId)
+    .maybeSingle();
+  const end = data?.current_period_end ? new Date(data.current_period_end) : null;
+  return data?.status === "active" && !!end && end.getTime() > Date.now();
+}
+
 async function paypalToken(): Promise<string> {
   const id = process.env.PAYPAL_CLIENT_ID;
   const secret = process.env.PAYPAL_CLIENT_SECRET;

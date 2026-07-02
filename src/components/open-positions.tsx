@@ -26,7 +26,7 @@ export function OpenPositions() {
 
   const quotes = useQuery({
     queryKey: ["quotes", pairs],
-    queryFn: () => qFn({ data: { pairs: pairs as string[] } }),
+    queryFn: () => qFn({ data: { pairs: pairs as any } }),
     enabled: pairs.length > 0,
     refetchInterval: 20_000,
   });

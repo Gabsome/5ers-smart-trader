@@ -1,10 +1,13 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { requireActiveSubscription } from "./subscription-guard";
 import { detectSetup, pipValue, suggestLot, type Candle } from "./indicators";
 import { fetchNewsEvents, newsGuard, summarizeTrades, type NewsEvent } from "./engine.server";
 
-const PAIRS = ["EUR/USD", "GBP/USD", "USD/JPY", "AUD/USD", "USD/CAD", "XAU/USD"];
+const PAIRS = ["EUR/USD", "GBP/USD", "USD/JPY", "AUD/USD", "USD/CAD", "XAU/USD"] as const;
+const pairSchema = z.enum(["EUR/USD", "GBP/USD", "USD/JPY", "AUD/USD", "USD/CAD", "XAU/USD"]);
+const intervalSchema = z.enum(["5min", "15min", "30min", "1h", "4h"]);
 
 async function fetchCandles(symbol: string, interval = "15min", outputsize = 100): Promise<Candle[]> {
   const key = process.env.TWELVEDATA_API_KEY;
@@ -27,11 +30,11 @@ async function fetchCandles(symbol: string, interval = "15min", outputsize = 100
 }
 
 export const getQuotes = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireActiveSubscription])
   .inputValidator(
     z.object({
-      pairs: z.array(z.string()).max(10).optional(),
-      interval: z.string().default("15min"),
+      pairs: z.array(pairSchema).max(10).optional(),
+      interval: intervalSchema.default("15min"),
     }),
   )
   .handler(async ({ data }) => {
@@ -56,8 +59,8 @@ const MODE_BRIEFS: Record<string, string> = {
 };
 
 export const generateSignal = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
-  .inputValidator(z.object({ pair: z.string(), interval: z.string().default("15min") }))
+  .middleware([requireActiveSubscription])
+  .inputValidator(z.object({ pair: pairSchema, interval: intervalSchema.default("15min") }))
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
 
@@ -176,10 +179,10 @@ export const listSignals = createServerFn({ method: "GET" })
  * sized so SL distance risks ~$100 and TP returns ~$20.
  */
 export const getDailyPick = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireActiveSubscription])
   .inputValidator(
     z.object({
-      interval: z.string().default("15min"),
+      interval: intervalSchema.default("15min"),
       riskUsd: z.number().min(10).max(10000).default(100),
       targetUsd: z.number().min(1).max(10000).default(20),
     }),

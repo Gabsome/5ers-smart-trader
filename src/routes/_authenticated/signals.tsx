@@ -29,7 +29,7 @@ function Signals() {
 
   const quotes = useQuery({
     queryKey: ["quotes", tf],
-    queryFn: () => qFn({ data: { interval: tf } }),
+    queryFn: () => qFn({ data: { interval: tf as any } }),
     refetchInterval: 60_000,
   });
 
@@ -40,7 +40,7 @@ function Signals() {
   });
 
   const gen = useMutation({
-    mutationFn: (pair: string) => gFn({ data: { pair, interval: tf } }),
+    mutationFn: (pair: string) => gFn({ data: { pair: pair as any, interval: tf as any } }),
     onSuccess: (r: any) => {
       if (r.skipped) toast.message("No clean setup", { description: r.reason });
       else toast.success(`${r.signal.direction.toUpperCase()} signal: ${r.signal.pair}`, { description: r.signal.rationale });
