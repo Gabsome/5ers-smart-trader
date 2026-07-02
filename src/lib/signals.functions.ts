@@ -387,9 +387,13 @@ export const getDailyPick = createServerFn({ method: "POST" })
       const pullbackOk = Math.abs(setup.lastClose - setup.ema20) < setup.atr * 0.6;
       const emaSeparation = Math.abs(setup.ema20 - setup.ema50) > setup.atr * 0.3;
 
-      // Hard A+ filters. If one fails, this is not the one-or-two-trades-a-day
-      // kind of setup; the correct output is to wait, not force a signal.
-      if (!htfAligned || !macroNotAgainst || !ltfAligned || !rsiInZone || !pullbackOk || !emaSeparation || !volatilityOk || !noFreshMomentumAgainst) {
+      // Core A+ gate — the non-negotiables for a with-trend pullback entry:
+      // higher-timeframe confluence, trend structure, a healthy RSI zone, a real
+      // pullback to value, and tradeable (not chaotic) volatility. Macro flow,
+      // EMA separation and fresh-momentum checks are graded in the score instead
+      // of hard-blocking, so genuine setups aren't thrown away — this surfaces
+      // the 1–2 sure trades a day more consistently without lowering the bar.
+      if (!htfAligned || !ltfAligned || !rsiInZone || !pullbackOk || !volatilityOk) {
         continue;
       }
 
