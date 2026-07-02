@@ -179,10 +179,10 @@ export const listSignals = createServerFn({ method: "GET" })
  * sized so SL distance risks ~$100 and TP returns ~$20.
  */
 export const getDailyPick = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireActiveSubscription])
   .inputValidator(
     z.object({
-      interval: z.string().default("15min"),
+      interval: intervalSchema.default("15min"),
       riskUsd: z.number().min(10).max(10000).default(100),
       targetUsd: z.number().min(1).max(10000).default(20),
     }),
