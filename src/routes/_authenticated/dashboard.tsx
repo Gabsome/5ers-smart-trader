@@ -36,20 +36,30 @@ function Dashboard() {
   });
   const [pair, setPair] = useState("XAU/USD");
 
-  // Realtime: refresh instantly when trades or balance change anywhere.
+  // Realtime: refresh instantly when THIS user's trades or balance change.
+  // Subscribes only to a private, per-user channel ("user:<uid>") so no other
+  // authenticated user can receive these events (enforced by RLS on realtime.messages).
   useEffect(() => {
-    const ch = supabase
-      .channel("dashboard-live")
-      .on("postgres_changes", { event: "*", schema: "public", table: "trades" }, () => {
-        qc.invalidateQueries({ queryKey: ["dashboard"] });
-        qc.invalidateQueries({ queryKey: ["trades"] });
-      })
-      .on("postgres_changes", { event: "*", schema: "public", table: "profiles" }, () => {
-        qc.invalidateQueries({ queryKey: ["dashboard"] });
-      })
-      .subscribe();
-    return () => { supabase.removeChannel(ch); };
+    let ch: ReturnType<typeof supabase.channel> | null = null;
+    let cancelled = false;
+    (async () => {
+      const { data: userData } = await supabase.auth.getUser();
+      const uid = userData.user?.id;
+      if (!uid || cancelled) return;
+      ch = supabase
+        .channel(`user:${uid}`, { config: { private: true } })
+        .on("postgres_changes", { event: "*", schema: "public", table: "trades", filter: `user_id=eq.${uid}` }, () => {
+          qc.invalidateQueries({ queryKey: ["dashboard"] });
+          qc.invalidateQueries({ queryKey: ["trades"] });
+        })
+        .on("postgres_changes", { event: "*", schema: "public", table: "profiles", filter: `id=eq.${uid}` }, () => {
+          qc.invalidateQueries({ queryKey: ["dashboard"] });
+        })
+        .subscribe();
+    })();
+    return () => { cancelled = true; if (ch) supabase.removeChannel(ch); };
   }, [qc]);
+
 
   if (isLoading || !data) return <LoadingScreen label="Loading your dashboard…" />;
 
