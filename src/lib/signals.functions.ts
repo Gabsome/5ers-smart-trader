@@ -438,8 +438,9 @@ export const getDailyPick = createServerFn({ method: "POST" })
       candidates.push({ pair, bias: setup.bias, entry, sl, tp, slPips, tpPips, lot, score, setup, htf: htfSetup, macro: macroSetup, factors, timing, lotCapped, actualRiskUsd });
     }
 
-    // Strict A+ quality gate — no room for error
-    const MIN_SCORE = 82;
+    // A+ quality gate — high enough to stay "sure trades", low enough to
+    // surface the 1–2 clean setups a day the trader is after.
+    const MIN_SCORE = 74;
     const qualified = candidates.filter((c) => c.score >= MIN_SCORE);
     if (!qualified.length) {
       const newsNote = newsBlocked.length
