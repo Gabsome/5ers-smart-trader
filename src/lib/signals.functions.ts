@@ -59,8 +59,8 @@ const MODE_BRIEFS: Record<string, string> = {
 };
 
 export const generateSignal = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
-  .inputValidator(z.object({ pair: z.string(), interval: z.string().default("15min") }))
+  .middleware([requireActiveSubscription])
+  .inputValidator(z.object({ pair: pairSchema, interval: intervalSchema.default("15min") }))
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
 
