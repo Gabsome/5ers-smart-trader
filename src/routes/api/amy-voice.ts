@@ -1,11 +1,24 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { createClient } from "@supabase/supabase-js";
 
-// Amy's voice — warm, natural, expressive female ElevenLabs voice (Jessica).
-const AMY_VOICE_ID = "cgSgspJ2msm6clMCkdW9";
+// Premium female ElevenLabs voice allowlist (mirror of AMY_VOICES).
+const VOICE_ALLOWLIST = new Set([
+  "cgSgspJ2msm6clMCkdW9",
+  "EXAVITQu4vr4xnSDxMaL",
+  "FGY2WhTYpPnrIDTdsKH5",
+  "Xb7hH8MSUJpSbSDYk0k2",
+  "XrExE9yKIg1WjnnlVkGX",
+  "pFZP5JQG7iQjIQuC4Bku",
+]);
+const DEFAULT_VOICE_ID = "cgSgspJ2msm6clMCkdW9";
 // Streaming PCM so the browser can start playing the instant the first bytes
 // arrive, instead of waiting for the whole clip to be synthesized.
 const PCM_SAMPLE_RATE = 24000;
+
+function clamp(n: unknown, min: number, max: number, fallback: number): number {
+  const v = typeof n === "number" ? n : NaN;
+  return Number.isFinite(v) ? Math.min(max, Math.max(min, v)) : fallback;
+}
 
 async function verifyUser(request: Request): Promise<boolean> {
   const SUPABASE_URL = process.env.SUPABASE_URL;
