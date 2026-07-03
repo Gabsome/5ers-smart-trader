@@ -182,7 +182,13 @@ export function AmyAssistant() {
         "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify({ text: text.slice(0, 2400) }),
+      body: JSON.stringify({
+        text: text.slice(0, 2400),
+        voiceId: settings.voiceId,
+        speed: settings.speed,
+        stability: settings.stability,
+        style: settings.style,
+      }),
     });
     if (!res.ok || !res.body) return false;
 
