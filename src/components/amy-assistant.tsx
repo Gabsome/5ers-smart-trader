@@ -1,11 +1,19 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { Send, X, Mic, MicOff, Volume2, VolumeX, Trash2, Loader2 } from "lucide-react";
+import { Send, X, Mic, MicOff, Volume2, VolumeX, Trash2, Loader2, Settings2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { listAmyMessages, sendAmyMessage, clearAmyMessages, speakAmy } from "@/lib/amy.functions";
 import { supabase } from "@/integrations/supabase/client";
+import {
+  AMY_MOODS,
+  AMY_VOICES,
+  DEFAULT_AMY_SETTINGS,
+  loadAmySettings,
+  saveAmySettings,
+  type AmySettings,
+} from "@/lib/amy-settings";
 
 type Msg = { id: string; role: "user" | "assistant"; content: string; created_at: string };
 const AMY_AVATAR = "👩🏽";
