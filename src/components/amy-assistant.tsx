@@ -133,10 +133,8 @@ export function AmyAssistant() {
       audioRef.current.removeAttribute("src");
       audioRef.current.load();
     }
-    if (canUseBrowserSpeech()) {
-      window.speechSynthesis.cancel();
-    }
   }
+
 
   async function playWithAudioContext(audio: string, ctx: AudioContext | null) {
     if (!ctx || ctx.state === "closed") return false;
