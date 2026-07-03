@@ -39,7 +39,11 @@ export const sendAmyMessage = createServerFn({ method: "POST" })
       { role: "user" as const, content: data.message },
     ];
 
-    const reply = await generateAmyReply(history);
+    const reply = await generateAmyReply(history, {
+      mood: data.mood,
+      humor: data.humor,
+      verbosity: data.verbosity,
+    });
 
     // Persist both turns.
     const { data: inserted, error } = await context.supabase
