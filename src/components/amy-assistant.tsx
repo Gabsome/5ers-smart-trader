@@ -1,11 +1,19 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { Send, X, Mic, MicOff, Volume2, VolumeX, Trash2, Loader2 } from "lucide-react";
+import { Send, X, Mic, MicOff, Volume2, VolumeX, Trash2, Loader2, Settings2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { listAmyMessages, sendAmyMessage, clearAmyMessages, speakAmy } from "@/lib/amy.functions";
 import { supabase } from "@/integrations/supabase/client";
+import {
+  AMY_MOODS,
+  AMY_VOICES,
+  DEFAULT_AMY_SETTINGS,
+  loadAmySettings,
+  saveAmySettings,
+  type AmySettings,
+} from "@/lib/amy-settings";
 
 type Msg = { id: string; role: "user" | "assistant"; content: string; created_at: string };
 const AMY_AVATAR = "👩🏽";
@@ -56,9 +64,7 @@ function base64ToArrayBuffer(base64: string) {
   return bytes.buffer;
 }
 
-function canUseBrowserSpeech() {
-  return typeof window !== "undefined" && "speechSynthesis" in window && "SpeechSynthesisUtterance" in window;
-}
+
 
 export function AmyAssistant() {
   const [open, setOpen] = useState(false);
@@ -68,6 +74,20 @@ export function AmyAssistant() {
   const [voiceOn, setVoiceOn] = useState(true);
   const [speaking, setSpeaking] = useState(false);
   const [voiceNotice, setVoiceNotice] = useState<string | null>(null);
+  const [showSettings, setShowSettings] = useState(false);
+  const [settings, setSettings] = useState<AmySettings>(DEFAULT_AMY_SETTINGS);
+
+  useEffect(() => {
+    setSettings(loadAmySettings());
+  }, []);
+
+  function updateSettings(patch: Partial<AmySettings>) {
+    setSettings((prev) => {
+      const next = { ...prev, ...patch };
+      saveAmySettings(next);
+      return next;
+    });
+  }
 
   const qc = useQueryClient();
   const fetchMessages = useServerFn(listAmyMessages);
@@ -79,7 +99,7 @@ export function AmyAssistant() {
   const audioContextRef = useRef<AudioContext | null>(null);
   const audioSourceRef = useRef<AudioBufferSourceNode | null>(null);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
-  const speechUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
+  
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
   const { data: messages = [] } = useQuery({
@@ -113,10 +133,8 @@ export function AmyAssistant() {
       audioRef.current.removeAttribute("src");
       audioRef.current.load();
     }
-    if (canUseBrowserSpeech()) {
-      window.speechSynthesis.cancel();
-    }
   }
+
 
   async function playWithAudioContext(audio: string, ctx: AudioContext | null) {
     if (!ctx || ctx.state === "closed") return false;
@@ -146,32 +164,7 @@ export function AmyAssistant() {
     return true;
   }
 
-  function playWithBrowserSpeech(text: string) {
-    if (!canUseBrowserSpeech()) return false;
-    const voices = window.speechSynthesis.getVoices();
-    // Female-only: pick a known female voice; if the browser exposes none,
-    // do NOT speak (never fall back to a male voice).
-    const femaleVoice =
-      voices.find((v) =>
-        /female|woman|jenny|aria|samantha|victoria|zira|susan|karen|tessa|fiona|moira|serena|allison|ava|google us english/i.test(
-          v.name,
-        ),
-      ) ?? null;
-    if (!femaleVoice) return false;
-    stopCurrentVoice();
-    setSpeaking(true);
-    const utterance = new SpeechSynthesisUtterance(text.slice(0, 700));
-    utterance.voice = femaleVoice;
-    utterance.rate = 1.0;
-    utterance.pitch = 1.08;
-    utterance.volume = 1;
-    utterance.onend = () => setSpeaking(false);
-    utterance.onerror = () => setSpeaking(false);
-    speechUtteranceRef.current = utterance;
-    window.speechSynthesis.speak(utterance);
-    setVoiceNotice("Amy used your browser voice fallback this time.");
-    return true;
-  }
+
 
   // Stream Amy's voice as PCM so she starts talking almost the instant her
   // reply lands — chunks are scheduled on the audio clock as they arrive.
@@ -189,7 +182,13 @@ export function AmyAssistant() {
         "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify({ text: text.slice(0, 2400) }),
+      body: JSON.stringify({
+        text: text.slice(0, 2400),
+        voiceId: settings.voiceId,
+        speed: settings.speed,
+        stability: settings.stability,
+        style: settings.style,
+      }),
     });
     if (!res.ok || !res.body) return false;
 
@@ -263,8 +262,17 @@ export function AmyAssistant() {
         console.warn("Amy streaming voice failed; falling back", streamError);
       }
 
-      // Fallback: buffered clip via the server function.
-      const { audio } = await speak({ data: { text: text.slice(0, 2400) } });
+      // Fallback: buffered premium clip via the server function (still the
+      // realistic ElevenLabs voice — we never use a robotic browser voice).
+      const { audio } = await speak({
+        data: {
+          text: text.slice(0, 2400),
+          voiceId: settings.voiceId,
+          speed: settings.speed,
+          stability: settings.stability,
+          style: settings.style,
+        },
+      });
       try {
         if (await playWithAudioContext(audio, ctx)) return;
       } catch (webAudioError) {
@@ -274,11 +282,7 @@ export function AmyAssistant() {
       try {
         if (await playWithAudioElement(audio)) return;
       } catch (nativeAudioError) {
-        console.warn("Amy native audio playback failed; trying browser speech", nativeAudioError);
-      }
-
-      if (playWithBrowserSpeech(text)) {
-        return;
+        console.warn("Amy native audio playback failed", nativeAudioError);
       }
 
       throw new Error("Audio playback was blocked by the browser");
@@ -287,7 +291,6 @@ export function AmyAssistant() {
       // Autoplay is often blocked until the user interacts — that's not an error,
       // they can use the "Play voice" button. Only surface real config issues.
       const msg = errorMessage(e, "");
-      if (playWithBrowserSpeech(text)) return;
       if (/not configured|voice error|api/i.test(msg)) {
         setVoiceNotice("Voice isn't available right now.");
       } else {
@@ -308,7 +311,14 @@ export function AmyAssistant() {
       { id: `tmp-${Date.now()}`, role: "user", content, created_at: new Date().toISOString() },
     ]);
     try {
-      const res = await send({ data: { message: content } });
+      const res = await send({
+        data: {
+          message: content,
+          mood: settings.mood,
+          humor: settings.humor,
+          verbosity: settings.verbosity,
+        },
+      });
       await qc.invalidateQueries({ queryKey: ["amy-messages"] });
       void playVoice(res.reply, voicePrime);
     } catch (e: unknown) {
@@ -412,6 +422,15 @@ export function AmyAssistant() {
                 {voiceOn ? <Volume2 className="size-4" /> : <VolumeX className="size-4" />}
               </Button>
               <Button
+                variant={showSettings ? "default" : "ghost"}
+                size="icon"
+                className="size-8"
+                title="Amy settings"
+                onClick={() => setShowSettings((s) => !s)}
+              >
+                <Settings2 className="size-4" />
+              </Button>
+              <Button
                 variant="ghost"
                 size="icon"
                 className="size-8"
@@ -432,7 +451,172 @@ export function AmyAssistant() {
             </div>
           </div>
 
-          {/* Messages */}
+          {/* Settings panel */}
+          {showSettings && (
+            <div className="border-b border-border bg-muted/30 px-3.5 py-3 space-y-4 max-h-[55%] overflow-y-auto text-sm">
+              <div className="font-semibold text-xs uppercase tracking-wide text-muted-foreground">
+                Amy Settings
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium">Voice (premium, realistic)</label>
+                <div className="grid grid-cols-2 gap-1.5">
+                  {AMY_VOICES.map((v) => (
+                    <button
+                      key={v.id}
+                      type="button"
+                      onClick={() => updateSettings({ voiceId: v.id })}
+                      className={`rounded-lg border px-2 py-1.5 text-left text-[11px] transition ${
+                        settings.voiceId === v.id
+                          ? "border-primary bg-primary/10"
+                          : "border-border hover:bg-muted"
+                      }`}
+                    >
+                      <div className="font-semibold">{v.label}</div>
+                      <div className="text-muted-foreground">{v.blurb}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium">Mood</label>
+                <div className="grid grid-cols-2 gap-1.5">
+                  {AMY_MOODS.map((m) => (
+                    <button
+                      key={m.id}
+                      type="button"
+                      onClick={() => updateSettings({ mood: m.id })}
+                      className={`rounded-lg border px-2 py-1.5 text-left text-[11px] transition ${
+                        settings.mood === m.id
+                          ? "border-primary bg-primary/10"
+                          : "border-border hover:bg-muted"
+                      }`}
+                    >
+                      <div className="font-semibold">{m.label}</div>
+                      <div className="text-muted-foreground">{m.blurb}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="flex items-center justify-between text-xs font-medium">
+                  <span>Humor</span>
+                  <span className="text-muted-foreground">{settings.humor}%</span>
+                </label>
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  step={5}
+                  value={settings.humor}
+                  onChange={(e) => updateSettings({ humor: Number(e.target.value) })}
+                  className="w-full accent-primary"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-medium">Response length</label>
+                <div className="grid grid-cols-3 gap-1.5">
+                  {(["short", "normal", "detailed"] as const).map((v) => (
+                    <button
+                      key={v}
+                      type="button"
+                      onClick={() => updateSettings({ verbosity: v })}
+                      className={`rounded-lg border px-2 py-1.5 text-center text-[11px] capitalize transition ${
+                        settings.verbosity === v
+                          ? "border-primary bg-primary/10"
+                          : "border-border hover:bg-muted"
+                      }`}
+                    >
+                      {v}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="flex items-center justify-between text-xs font-medium">
+                  <span>Voice speed</span>
+                  <span className="text-muted-foreground">{settings.speed.toFixed(2)}x</span>
+                </label>
+                <input
+                  type="range"
+                  min={0.7}
+                  max={1.2}
+                  step={0.05}
+                  value={settings.speed}
+                  onChange={(e) => updateSettings({ speed: Number(e.target.value) })}
+                  className="w-full accent-primary"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="flex items-center justify-between text-xs font-medium">
+                  <span>Voice stability</span>
+                  <span className="text-muted-foreground">{Math.round(settings.stability * 100)}%</span>
+                </label>
+                <input
+                  type="range"
+                  min={0}
+                  max={1}
+                  step={0.05}
+                  value={settings.stability}
+                  onChange={(e) => updateSettings({ stability: Number(e.target.value) })}
+                  className="w-full accent-primary"
+                />
+                <p className="text-[10px] text-muted-foreground">
+                  Lower = more expressive & emotional. Higher = calmer & consistent.
+                </p>
+              </div>
+
+              <div className="space-y-1">
+                <label className="flex items-center justify-between text-xs font-medium">
+                  <span>Voice expressiveness</span>
+                  <span className="text-muted-foreground">{Math.round(settings.style * 100)}%</span>
+                </label>
+                <input
+                  type="range"
+                  min={0}
+                  max={1}
+                  step={0.05}
+                  value={settings.style}
+                  onChange={(e) => updateSettings({ style: Number(e.target.value) })}
+                  className="w-full accent-primary"
+                />
+              </div>
+
+              <div className="flex items-center justify-between pt-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    saveAmySettings(DEFAULT_AMY_SETTINGS);
+                    setSettings(DEFAULT_AMY_SETTINGS);
+                  }}
+                  className="text-[11px] text-muted-foreground hover:text-foreground underline"
+                >
+                  Reset to defaults
+                </button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 text-[11px]"
+                  onClick={() => {
+                    const prime = primeVoicePlayback().catch(() => null);
+                    void playVoice(
+                      "Hey, it's Amy. This is how I sound with your current settings — like it, or should we spice it up a little?",
+                      prime,
+                    );
+                  }}
+                >
+                  <Volume2 className="size-3 mr-1" /> Preview voice
+                </Button>
+              </div>
+            </div>
+          )}
+
+
           <div ref={scrollRef} className="flex-1 overflow-y-auto px-3 py-4 space-y-3">
             {messages.length === 0 && !sending && (
               <div className="text-center text-sm text-muted-foreground px-4 py-8">

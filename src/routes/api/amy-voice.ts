@@ -1,11 +1,24 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { createClient } from "@supabase/supabase-js";
 
-// Amy's voice — warm, natural, expressive female ElevenLabs voice (Jessica).
-const AMY_VOICE_ID = "cgSgspJ2msm6clMCkdW9";
+// Premium female ElevenLabs voice allowlist (mirror of AMY_VOICES).
+const VOICE_ALLOWLIST = new Set([
+  "cgSgspJ2msm6clMCkdW9",
+  "EXAVITQu4vr4xnSDxMaL",
+  "FGY2WhTYpPnrIDTdsKH5",
+  "Xb7hH8MSUJpSbSDYk0k2",
+  "XrExE9yKIg1WjnnlVkGX",
+  "pFZP5JQG7iQjIQuC4Bku",
+]);
+const DEFAULT_VOICE_ID = "cgSgspJ2msm6clMCkdW9";
 // Streaming PCM so the browser can start playing the instant the first bytes
 // arrive, instead of waiting for the whole clip to be synthesized.
 const PCM_SAMPLE_RATE = 24000;
+
+function clamp(n: unknown, min: number, max: number, fallback: number): number {
+  const v = typeof n === "number" ? n : NaN;
+  return Number.isFinite(v) ? Math.min(max, Math.max(min, v)) : fallback;
+}
 
 async function verifyUser(request: Request): Promise<boolean> {
   const SUPABASE_URL = process.env.SUPABASE_URL;
@@ -36,16 +49,30 @@ export const Route = createFileRoute("/api/amy-voice")({
         if (!apiKey) return new Response("Voice not configured", { status: 500 });
 
         let text = "";
+        let voiceId = DEFAULT_VOICE_ID;
+        let speed = 1.05;
+        let stability = 0.4;
+        let style = 0.35;
         try {
-          const body = (await request.json()) as { text?: string };
+          const body = (await request.json()) as {
+            text?: string;
+            voiceId?: string;
+            speed?: number;
+            stability?: number;
+            style?: number;
+          };
           text = (body.text ?? "").slice(0, 2500);
+          if (body.voiceId && VOICE_ALLOWLIST.has(body.voiceId)) voiceId = body.voiceId;
+          speed = clamp(body.speed, 0.7, 1.2, 1.05);
+          stability = clamp(body.stability, 0, 1, 0.4);
+          style = clamp(body.style, 0, 1, 0.35);
         } catch {
           return new Response("Bad request", { status: 400 });
         }
         if (!text.trim()) return new Response("Bad request", { status: 400 });
 
         const upstream = await fetch(
-          `https://api.elevenlabs.io/v1/text-to-speech/${AMY_VOICE_ID}/stream?output_format=pcm_${PCM_SAMPLE_RATE}&optimize_streaming_latency=3`,
+          `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}/stream?output_format=pcm_${PCM_SAMPLE_RATE}&optimize_streaming_latency=3`,
           {
             method: "POST",
             headers: {
@@ -58,11 +85,11 @@ export const Route = createFileRoute("/api/amy-voice")({
               // natural female voice.
               model_id: "eleven_turbo_v2_5",
               voice_settings: {
-                stability: 0.4,
+                stability,
                 similarity_boost: 0.8,
-                style: 0.35,
+                style,
                 use_speaker_boost: true,
-                speed: 1.05,
+                speed,
               },
             }),
           },
