@@ -99,7 +99,7 @@ export function AmyAssistant() {
   const audioContextRef = useRef<AudioContext | null>(null);
   const audioSourceRef = useRef<AudioBufferSourceNode | null>(null);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
-  const speechUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
+  
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
   const { data: messages = [] } = useQuery({
