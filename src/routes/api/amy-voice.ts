@@ -49,16 +49,30 @@ export const Route = createFileRoute("/api/amy-voice")({
         if (!apiKey) return new Response("Voice not configured", { status: 500 });
 
         let text = "";
+        let voiceId = DEFAULT_VOICE_ID;
+        let speed = 1.05;
+        let stability = 0.4;
+        let style = 0.35;
         try {
-          const body = (await request.json()) as { text?: string };
+          const body = (await request.json()) as {
+            text?: string;
+            voiceId?: string;
+            speed?: number;
+            stability?: number;
+            style?: number;
+          };
           text = (body.text ?? "").slice(0, 2500);
+          if (body.voiceId && VOICE_ALLOWLIST.has(body.voiceId)) voiceId = body.voiceId;
+          speed = clamp(body.speed, 0.7, 1.2, 1.05);
+          stability = clamp(body.stability, 0, 1, 0.4);
+          style = clamp(body.style, 0, 1, 0.35);
         } catch {
           return new Response("Bad request", { status: 400 });
         }
         if (!text.trim()) return new Response("Bad request", { status: 400 });
 
         const upstream = await fetch(
-          `https://api.elevenlabs.io/v1/text-to-speech/${AMY_VOICE_ID}/stream?output_format=pcm_${PCM_SAMPLE_RATE}&optimize_streaming_latency=3`,
+          `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}/stream?output_format=pcm_${PCM_SAMPLE_RATE}&optimize_streaming_latency=3`,
           {
             method: "POST",
             headers: {
@@ -71,11 +85,11 @@ export const Route = createFileRoute("/api/amy-voice")({
               // natural female voice.
               model_id: "eleven_turbo_v2_5",
               voice_settings: {
-                stability: 0.4,
+                stability,
                 similarity_boost: 0.8,
-                style: 0.35,
+                style,
                 use_speaker_boost: true,
-                speed: 1.05,
+                speed,
               },
             }),
           },
