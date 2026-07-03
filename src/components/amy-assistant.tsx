@@ -311,7 +311,14 @@ export function AmyAssistant() {
       { id: `tmp-${Date.now()}`, role: "user", content, created_at: new Date().toISOString() },
     ]);
     try {
-      const res = await send({ data: { message: content } });
+      const res = await send({
+        data: {
+          message: content,
+          mood: settings.mood,
+          humor: settings.humor,
+          verbosity: settings.verbosity,
+        },
+      });
       await qc.invalidateQueries({ queryKey: ["amy-messages"] });
       void playVoice(res.reply, voicePrime);
     } catch (e: unknown) {
