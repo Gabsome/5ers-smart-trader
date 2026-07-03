@@ -422,6 +422,15 @@ export function AmyAssistant() {
                 {voiceOn ? <Volume2 className="size-4" /> : <VolumeX className="size-4" />}
               </Button>
               <Button
+                variant={showSettings ? "default" : "ghost"}
+                size="icon"
+                className="size-8"
+                title="Amy settings"
+                onClick={() => setShowSettings((s) => !s)}
+              >
+                <Settings2 className="size-4" />
+              </Button>
+              <Button
                 variant="ghost"
                 size="icon"
                 className="size-8"
