@@ -64,9 +64,7 @@ function base64ToArrayBuffer(base64: string) {
   return bytes.buffer;
 }
 
-function canUseBrowserSpeech() {
-  return typeof window !== "undefined" && "speechSynthesis" in window && "SpeechSynthesisUtterance" in window;
-}
+
 
 export function AmyAssistant() {
   const [open, setOpen] = useState(false);
