@@ -71,9 +71,22 @@ export const clearAmyMessages = createServerFn({ method: "POST" })
 
 export const speakAmy = createServerFn({ method: "POST" })
   .middleware([requireActiveSubscription])
-  .inputValidator(z.object({ text: z.string().min(1).max(2500) }))
+  .inputValidator(
+    z.object({
+      text: z.string().min(1).max(2500),
+      voiceId: z.string().max(64).optional(),
+      speed: z.number().min(0.7).max(1.2).optional(),
+      stability: z.number().min(0).max(1).optional(),
+      style: z.number().min(0).max(1).optional(),
+    }),
+  )
   .handler(async ({ data }) => {
-    const audio = await synthesizeAmyVoice(data.text);
+    const audio = await synthesizeAmyVoice(data.text, {
+      voiceId: data.voiceId,
+      speed: data.speed,
+      stability: data.stability,
+      style: data.style,
+    });
     return { audio };
   });
 
