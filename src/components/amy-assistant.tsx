@@ -164,32 +164,7 @@ export function AmyAssistant() {
     return true;
   }
 
-  function playWithBrowserSpeech(text: string) {
-    if (!canUseBrowserSpeech()) return false;
-    const voices = window.speechSynthesis.getVoices();
-    // Female-only: pick a known female voice; if the browser exposes none,
-    // do NOT speak (never fall back to a male voice).
-    const femaleVoice =
-      voices.find((v) =>
-        /female|woman|jenny|aria|samantha|victoria|zira|susan|karen|tessa|fiona|moira|serena|allison|ava|google us english/i.test(
-          v.name,
-        ),
-      ) ?? null;
-    if (!femaleVoice) return false;
-    stopCurrentVoice();
-    setSpeaking(true);
-    const utterance = new SpeechSynthesisUtterance(text.slice(0, 700));
-    utterance.voice = femaleVoice;
-    utterance.rate = 1.0;
-    utterance.pitch = 1.08;
-    utterance.volume = 1;
-    utterance.onend = () => setSpeaking(false);
-    utterance.onerror = () => setSpeaking(false);
-    speechUtteranceRef.current = utterance;
-    window.speechSynthesis.speak(utterance);
-    setVoiceNotice("Amy used your browser voice fallback this time.");
-    return true;
-  }
+
 
   // Stream Amy's voice as PCM so she starts talking almost the instant her
   // reply lands — chunks are scheduled on the audio clock as they arrive.
