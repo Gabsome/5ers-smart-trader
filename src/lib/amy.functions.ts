@@ -18,7 +18,14 @@ export const listAmyMessages = createServerFn({ method: "GET" })
 
 export const sendAmyMessage = createServerFn({ method: "POST" })
   .middleware([requireActiveSubscription])
-  .inputValidator(z.object({ message: z.string().min(1).max(4000) }))
+  .inputValidator(
+    z.object({
+      message: z.string().min(1).max(4000),
+      mood: z.enum(["balanced", "dark", "soft", "hype", "business"]).optional(),
+      humor: z.number().min(0).max(100).optional(),
+      verbosity: z.enum(["short", "normal", "detailed"]).optional(),
+    }),
+  )
   .handler(async ({ data, context }) => {
     // Load recent history for context.
     const { data: prior } = await context.supabase
