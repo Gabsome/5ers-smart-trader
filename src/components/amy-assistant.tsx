@@ -74,6 +74,20 @@ export function AmyAssistant() {
   const [voiceOn, setVoiceOn] = useState(true);
   const [speaking, setSpeaking] = useState(false);
   const [voiceNotice, setVoiceNotice] = useState<string | null>(null);
+  const [showSettings, setShowSettings] = useState(false);
+  const [settings, setSettings] = useState<AmySettings>(DEFAULT_AMY_SETTINGS);
+
+  useEffect(() => {
+    setSettings(loadAmySettings());
+  }, []);
+
+  function updateSettings(patch: Partial<AmySettings>) {
+    setSettings((prev) => {
+      const next = { ...prev, ...patch };
+      saveAmySettings(next);
+      return next;
+    });
+  }
 
   const qc = useQueryClient();
   const fetchMessages = useServerFn(listAmyMessages);
