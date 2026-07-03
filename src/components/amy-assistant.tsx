@@ -262,8 +262,17 @@ export function AmyAssistant() {
         console.warn("Amy streaming voice failed; falling back", streamError);
       }
 
-      // Fallback: buffered clip via the server function.
-      const { audio } = await speak({ data: { text: text.slice(0, 2400) } });
+      // Fallback: buffered premium clip via the server function (still the
+      // realistic ElevenLabs voice — we never use a robotic browser voice).
+      const { audio } = await speak({
+        data: {
+          text: text.slice(0, 2400),
+          voiceId: settings.voiceId,
+          speed: settings.speed,
+          stability: settings.stability,
+          style: settings.style,
+        },
+      });
       try {
         if (await playWithAudioContext(audio, ctx)) return;
       } catch (webAudioError) {
@@ -273,11 +282,7 @@ export function AmyAssistant() {
       try {
         if (await playWithAudioElement(audio)) return;
       } catch (nativeAudioError) {
-        console.warn("Amy native audio playback failed; trying browser speech", nativeAudioError);
-      }
-
-      if (playWithBrowserSpeech(text)) {
-        return;
+        console.warn("Amy native audio playback failed", nativeAudioError);
       }
 
       throw new Error("Audio playback was blocked by the browser");
@@ -286,7 +291,6 @@ export function AmyAssistant() {
       // Autoplay is often blocked until the user interacts — that's not an error,
       // they can use the "Play voice" button. Only surface real config issues.
       const msg = errorMessage(e, "");
-      if (playWithBrowserSpeech(text)) return;
       if (/not configured|voice error|api/i.test(msg)) {
         setVoiceNotice("Voice isn't available right now.");
       } else {
