@@ -451,7 +451,172 @@ export function AmyAssistant() {
             </div>
           </div>
 
-          {/* Messages */}
+          {/* Settings panel */}
+          {showSettings && (
+            <div className="border-b border-border bg-muted/30 px-3.5 py-3 space-y-4 max-h-[55%] overflow-y-auto text-sm">
+              <div className="font-semibold text-xs uppercase tracking-wide text-muted-foreground">
+                Amy Settings
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium">Voice (premium, realistic)</label>
+                <div className="grid grid-cols-2 gap-1.5">
+                  {AMY_VOICES.map((v) => (
+                    <button
+                      key={v.id}
+                      type="button"
+                      onClick={() => updateSettings({ voiceId: v.id })}
+                      className={`rounded-lg border px-2 py-1.5 text-left text-[11px] transition ${
+                        settings.voiceId === v.id
+                          ? "border-primary bg-primary/10"
+                          : "border-border hover:bg-muted"
+                      }`}
+                    >
+                      <div className="font-semibold">{v.label}</div>
+                      <div className="text-muted-foreground">{v.blurb}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium">Mood</label>
+                <div className="grid grid-cols-2 gap-1.5">
+                  {AMY_MOODS.map((m) => (
+                    <button
+                      key={m.id}
+                      type="button"
+                      onClick={() => updateSettings({ mood: m.id })}
+                      className={`rounded-lg border px-2 py-1.5 text-left text-[11px] transition ${
+                        settings.mood === m.id
+                          ? "border-primary bg-primary/10"
+                          : "border-border hover:bg-muted"
+                      }`}
+                    >
+                      <div className="font-semibold">{m.label}</div>
+                      <div className="text-muted-foreground">{m.blurb}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="flex items-center justify-between text-xs font-medium">
+                  <span>Humor</span>
+                  <span className="text-muted-foreground">{settings.humor}%</span>
+                </label>
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  step={5}
+                  value={settings.humor}
+                  onChange={(e) => updateSettings({ humor: Number(e.target.value) })}
+                  className="w-full accent-primary"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-medium">Response length</label>
+                <div className="grid grid-cols-3 gap-1.5">
+                  {(["short", "normal", "detailed"] as const).map((v) => (
+                    <button
+                      key={v}
+                      type="button"
+                      onClick={() => updateSettings({ verbosity: v })}
+                      className={`rounded-lg border px-2 py-1.5 text-center text-[11px] capitalize transition ${
+                        settings.verbosity === v
+                          ? "border-primary bg-primary/10"
+                          : "border-border hover:bg-muted"
+                      }`}
+                    >
+                      {v}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="flex items-center justify-between text-xs font-medium">
+                  <span>Voice speed</span>
+                  <span className="text-muted-foreground">{settings.speed.toFixed(2)}x</span>
+                </label>
+                <input
+                  type="range"
+                  min={0.7}
+                  max={1.2}
+                  step={0.05}
+                  value={settings.speed}
+                  onChange={(e) => updateSettings({ speed: Number(e.target.value) })}
+                  className="w-full accent-primary"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="flex items-center justify-between text-xs font-medium">
+                  <span>Voice stability</span>
+                  <span className="text-muted-foreground">{Math.round(settings.stability * 100)}%</span>
+                </label>
+                <input
+                  type="range"
+                  min={0}
+                  max={1}
+                  step={0.05}
+                  value={settings.stability}
+                  onChange={(e) => updateSettings({ stability: Number(e.target.value) })}
+                  className="w-full accent-primary"
+                />
+                <p className="text-[10px] text-muted-foreground">
+                  Lower = more expressive & emotional. Higher = calmer & consistent.
+                </p>
+              </div>
+
+              <div className="space-y-1">
+                <label className="flex items-center justify-between text-xs font-medium">
+                  <span>Voice expressiveness</span>
+                  <span className="text-muted-foreground">{Math.round(settings.style * 100)}%</span>
+                </label>
+                <input
+                  type="range"
+                  min={0}
+                  max={1}
+                  step={0.05}
+                  value={settings.style}
+                  onChange={(e) => updateSettings({ style: Number(e.target.value) })}
+                  className="w-full accent-primary"
+                />
+              </div>
+
+              <div className="flex items-center justify-between pt-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    saveAmySettings(DEFAULT_AMY_SETTINGS);
+                    setSettings(DEFAULT_AMY_SETTINGS);
+                  }}
+                  className="text-[11px] text-muted-foreground hover:text-foreground underline"
+                >
+                  Reset to defaults
+                </button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 text-[11px]"
+                  onClick={() => {
+                    const prime = primeVoicePlayback().catch(() => null);
+                    void playVoice(
+                      "Hey, it's Amy. This is how I sound with your current settings — like it, or should we spice it up a little?",
+                      prime,
+                    );
+                  }}
+                >
+                  <Volume2 className="size-3 mr-1" /> Preview voice
+                </Button>
+              </div>
+            </div>
+          )}
+
+
           <div ref={scrollRef} className="flex-1 overflow-y-auto px-3 py-4 space-y-3">
             {messages.length === 0 && !sending && (
               <div className="text-center text-sm text-muted-foreground px-4 py-8">
