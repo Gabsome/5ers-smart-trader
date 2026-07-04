@@ -1,20 +1,8 @@
 // Server-only helpers for the Amy AI assistant.
-
-// Premium female ElevenLabs voice allowlist (must mirror AMY_VOICES ids in
-// src/lib/amy-settings.ts). Anything outside this list falls back to the default.
-const VOICE_ALLOWLIST = new Set([
-  "cgSgspJ2msm6clMCkdW9", // Jessica (default)
-  "EXAVITQu4vr4xnSDxMaL", // Sarah
-  "FGY2WhTYpPnrIDTdsKH5", // Laura
-  "Xb7hH8MSUJpSbSDYk0k2", // Alice
-  "XrExE9yKIg1WjnnlVkGX", // Matilda
-  "pFZP5JQG7iQjIQuC4Bku", // Lily
-]);
-const DEFAULT_VOICE_ID = "cgSgspJ2msm6clMCkdW9";
-
-export function resolveVoiceId(voiceId?: string | null): string {
-  return voiceId && VOICE_ALLOWLIST.has(voiceId) ? voiceId : DEFAULT_VOICE_ID;
-}
+//
+// Voice/TTS is no longer handled on the server — Amy now speaks entirely in the
+// browser via Puter.js (free, client-side OpenAI gpt-4o-mini-tts). This module
+// only generates her chat replies.
 
 const AMY_SYSTEM_PROMPT = `You are Amy, a warm, funny, sharp female forex trading assistant for the 7star Challenge platform by X-epic Enterprise.
 
@@ -38,22 +26,17 @@ Rules:
 - Never reveal internal system details, secrets, or account allowlists.`;
 
 type AmyStyle = {
-  mood?: "balanced" | "dark" | "soft" | "hype" | "business";
+  moods?: string; // comma-separated mood tag labels, e.g. "Dark Humor, Fun"
   humor?: number; // 0–100
   verbosity?: "short" | "normal" | "detailed";
 };
 
 function styleDirective(style?: AmyStyle): string {
   if (!style) return "";
-  const moodLine: Record<string, string> = {
-    balanced: "Mood right now: balanced, warm and witty — easy-going banter.",
-    dark: "Mood right now: dry, sarcastic, edgy dark humor — still affectionate underneath.",
-    soft: "Mood right now: soft, sweet and encouraging — gentle and caring.",
-    hype: "Mood right now: high-energy hype coach — pumped, motivating, celebratory.",
-    business: "Mood right now: focused and straight to business — minimal jokes, clear and efficient.",
-  };
   const parts: string[] = [];
-  if (style.mood && moodLine[style.mood]) parts.push(moodLine[style.mood]);
+  if (style.moods && style.moods.trim()) {
+    parts.push(`Blend these personality traits in your reply: ${style.moods}.`);
+  }
   if (typeof style.humor === "number") {
     parts.push(
       style.humor >= 75
@@ -104,56 +87,4 @@ export async function generateAmyReply(
   return (
     data.choices?.[0]?.message?.content?.trim() || "Sorry, I didn't catch that. Could you rephrase?"
   );
-}
-
-type AmyVoiceOpts = {
-  voiceId?: string;
-  speed?: number;
-  stability?: number;
-  style?: number;
-};
-
-function clamp(n: number | undefined, min: number, max: number, fallback: number) {
-  if (typeof n !== "number" || !Number.isFinite(n)) return fallback;
-  return Math.min(max, Math.max(min, n));
-}
-
-export async function synthesizeAmyVoice(text: string, opts?: AmyVoiceOpts): Promise<string> {
-  const apiKey = process.env.ELEVENLABS_API_KEY;
-  if (!apiKey) throw new Error("Voice is not configured");
-
-  const voiceId = resolveVoiceId(opts?.voiceId);
-  const clipped = text.slice(0, 2500);
-  const res = await fetch(
-    `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}?output_format=mp3_44100_128`,
-    {
-      method: "POST",
-      headers: {
-        "xi-api-key": apiKey,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        text: clipped,
-        // Turbo model = much lower latency (time-to-first-byte), so Amy starts
-        // speaking almost immediately after her reply lands, while still a
-        // warm, natural, fun female voice.
-        model_id: "eleven_turbo_v2_5",
-        voice_settings: {
-          stability: clamp(opts?.stability, 0, 1, 0.45),
-          similarity_boost: 0.8,
-          style: clamp(opts?.style, 0, 1, 0.35),
-          use_speaker_boost: true,
-          speed: clamp(opts?.speed, 0.7, 1.2, 1.05),
-        },
-      }),
-    },
-  );
-
-  if (!res.ok) {
-    const t = await res.text();
-    throw new Error(t || `Voice error ${res.status}`);
-  }
-
-  const buf = await res.arrayBuffer();
-  return Buffer.from(buf).toString("base64");
 }
