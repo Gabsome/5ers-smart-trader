@@ -4,16 +4,18 @@ import { useServerFn } from "@tanstack/react-start";
 import { Send, X, Mic, MicOff, Volume2, VolumeX, Trash2, Loader2, Settings2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { listAmyMessages, sendAmyMessage, clearAmyMessages, speakAmy } from "@/lib/amy.functions";
-import { supabase } from "@/integrations/supabase/client";
+import { listAmyMessages, sendAmyMessage, clearAmyMessages } from "@/lib/amy.functions";
 import {
-  AMY_MOODS,
+  AMY_MOOD_TAGS,
   AMY_VOICES,
   DEFAULT_AMY_SETTINGS,
+  buildMoodTextDirective,
   loadAmySettings,
   saveAmySettings,
+  type AmyMoodTag,
   type AmySettings,
 } from "@/lib/amy-settings";
+import { AmySpeaker } from "@/lib/amy-voice";
 
 type Msg = { id: string; role: "user" | "assistant"; content: string; created_at: string };
 const AMY_AVATAR = "👩🏽";
@@ -34,14 +36,11 @@ type SpeechRecognitionLike = {
 };
 
 type SpeechRecognitionConstructor = new () => SpeechRecognitionLike;
-type AudioContextWindow = Window &
-  typeof globalThis & { webkitAudioContext?: typeof AudioContext };
 
 function errorMessage(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback;
 }
 
-// Minimal typing for the browser SpeechRecognition API.
 function getSpeechRecognition(): SpeechRecognitionConstructor | null {
   if (typeof window === "undefined") return null;
   const speechWindow = window as Window & {
@@ -51,21 +50,6 @@ function getSpeechRecognition(): SpeechRecognitionConstructor | null {
   return speechWindow.SpeechRecognition || speechWindow.webkitSpeechRecognition || null;
 }
 
-function getAudioContextConstructor() {
-  if (typeof window === "undefined") return null;
-  const audioWindow = window as AudioContextWindow;
-  return audioWindow.AudioContext || audioWindow.webkitAudioContext || null;
-}
-
-function base64ToArrayBuffer(base64: string) {
-  const binary = window.atob(base64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
-  return bytes.buffer;
-}
-
-
-
 export function AmyAssistant() {
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState("");
@@ -73,7 +57,6 @@ export function AmyAssistant() {
   const [listening, setListening] = useState(false);
   const [voiceOn, setVoiceOn] = useState(true);
   const [speaking, setSpeaking] = useState(false);
-  const [voiceNotice, setVoiceNotice] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [settings, setSettings] = useState<AmySettings>(DEFAULT_AMY_SETTINGS);
 
@@ -89,17 +72,23 @@ export function AmyAssistant() {
     });
   }
 
+  function toggleMood(tag: AmyMoodTag) {
+    setSettings((prev) => {
+      const has = prev.moods.includes(tag);
+      const moods = has ? prev.moods.filter((m) => m !== tag) : [...prev.moods, tag];
+      const next = { ...prev, moods: moods.length ? moods : prev.moods };
+      saveAmySettings(next);
+      return next;
+    });
+  }
+
   const qc = useQueryClient();
   const fetchMessages = useServerFn(listAmyMessages);
   const send = useServerFn(sendAmyMessage);
   const clear = useServerFn(clearAmyMessages);
-  const speak = useServerFn(speakAmy);
 
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-  const audioContextRef = useRef<AudioContext | null>(null);
-  const audioSourceRef = useRef<AudioBufferSourceNode | null>(null);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
-  
+  const speakerRef = useRef<AmySpeaker | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
   const { data: messages = [] } = useQuery({
@@ -112,200 +101,32 @@ export function AmyAssistant() {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [messages, sending, open]);
 
-  async function primeVoicePlayback() {
-    const AudioContextCtor = getAudioContextConstructor();
-    if (!AudioContextCtor) return null;
-    const ctx = audioContextRef.current ?? new AudioContextCtor();
-    audioContextRef.current = ctx;
-    if (ctx.state === "suspended") await ctx.resume();
-    return ctx;
-  }
-
   function stopCurrentVoice() {
-    try {
-      audioSourceRef.current?.stop();
-    } catch {
-      // Already stopped.
-    }
-    audioSourceRef.current = null;
-    if (audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current.removeAttribute("src");
-      audioRef.current.load();
-    }
+    speakerRef.current?.cancel();
+    speakerRef.current = null;
+    setSpeaking(false);
   }
 
-
-  async function playWithAudioContext(audio: string, ctx: AudioContext | null) {
-    if (!ctx || ctx.state === "closed") return false;
-    if (ctx.state === "suspended") await ctx.resume();
+  // Speak text through the Puter.js sentence queue — Amy starts talking the
+  // moment the first sentence is ready. `feed`/`flush` are ready for true
+  // token streaming; here we hand over the full reply at once.
+  function playVoice(text: string) {
+    if (!voiceOn || !text.trim()) return;
     stopCurrentVoice();
-    const decoded = await ctx.decodeAudioData(base64ToArrayBuffer(audio));
-    const source = ctx.createBufferSource();
-    source.buffer = decoded;
-    source.connect(ctx.destination);
-    source.onended = () => setSpeaking(false);
-    audioSourceRef.current = source;
-    source.start(ctx.currentTime + 0.05);
-    return true;
-  }
-
-  async function playWithAudioElement(audio: string) {
-    if (!audioRef.current) return false;
-    stopCurrentVoice();
-    audioRef.current.onended = () => setSpeaking(false);
-    audioRef.current.onerror = () => {
-      setSpeaking(false);
-      setVoiceNotice('Tap "Play voice" to hear Amy.');
-    };
-    audioRef.current.src = `data:audio/mpeg;base64,${audio}`;
-    audioRef.current.load();
-    await audioRef.current.play();
-    return true;
-  }
-
-
-
-  // Stream Amy's voice as PCM so she starts talking almost the instant her
-  // reply lands — chunks are scheduled on the audio clock as they arrive.
-  async function streamVoicePcm(text: string, ctx: AudioContext | null) {
-    if (!ctx || ctx.state === "closed") return false;
-    if (ctx.state === "suspended") await ctx.resume();
-
-    const { data: sess } = await supabase.auth.getSession();
-    const token = sess.session?.access_token;
-    if (!token) return false;
-
-    const res = await fetch("/api/amy-voice", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({
-        text: text.slice(0, 2400),
-        voiceId: settings.voiceId,
-        speed: settings.speed,
-        stability: settings.stability,
-        style: settings.style,
-      }),
+    const speaker = new AmySpeaker(settings, {
+      onStart: () => setSpeaking(true),
+      onEnd: () => setSpeaking(false),
     });
-    if (!res.ok || !res.body) return false;
-
-    const sampleRate = Number(res.headers.get("X-Sample-Rate")) || 24000;
-    stopCurrentVoice();
-    setSpeaking(true);
-
-    let playhead = 0;
-    let leftover = new Uint8Array(0);
-    let started = false;
-    let ended = false;
-    const scheduleEnd = () => {
-      if (ended) return;
-      const remaining = playhead - ctx.currentTime;
-      window.setTimeout(() => setSpeaking(false), Math.max(0, remaining * 1000) + 120);
-    };
-
-    const pushChunk = (incoming: Uint8Array) => {
-      const merged = new Uint8Array(leftover.length + incoming.length);
-      merged.set(leftover);
-      merged.set(incoming, leftover.length);
-      const usable = merged.length - (merged.length % 2);
-      leftover = merged.slice(usable);
-      if (usable === 0) return;
-      const samples = new Int16Array(merged.buffer, 0, usable / 2);
-      const floats = Float32Array.from(samples, (s) => s / 32768);
-      const buffer = ctx.createBuffer(1, floats.length, sampleRate);
-      buffer.copyToChannel(floats, 0);
-      const source = ctx.createBufferSource();
-      source.buffer = buffer;
-      source.connect(ctx.destination);
-      audioSourceRef.current = source;
-      if (!started) {
-        playhead = ctx.currentTime + 0.06;
-        started = true;
-      } else {
-        playhead = Math.max(playhead, ctx.currentTime);
-      }
-      source.start(playhead);
-      playhead += buffer.duration;
-    };
-
-    const reader = res.body.getReader();
-    try {
-      while (true) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        if (value) pushChunk(value);
-      }
-    } catch (err) {
-      console.warn("Amy voice stream interrupted", err);
-    }
-    ended = false;
-    scheduleEnd();
-    ended = true;
-    return started;
-  }
-
-  async function playVoice(text: string, primedContext?: Promise<AudioContext | null>) {
-    if (!voiceOn) return;
-    setVoiceNotice(null);
-    try {
-      setSpeaking(true);
-      const contextPromise = primedContext ?? primeVoicePlayback().catch(() => null);
-      const ctx = await contextPromise;
-
-      // Fast path: stream PCM and start playing immediately.
-      try {
-        if (await streamVoicePcm(text, ctx)) return;
-      } catch (streamError) {
-        console.warn("Amy streaming voice failed; falling back", streamError);
-      }
-
-      // Fallback: buffered premium clip via the server function (still the
-      // realistic ElevenLabs voice — we never use a robotic browser voice).
-      const { audio } = await speak({
-        data: {
-          text: text.slice(0, 2400),
-          voiceId: settings.voiceId,
-          speed: settings.speed,
-          stability: settings.stability,
-          style: settings.style,
-        },
-      });
-      try {
-        if (await playWithAudioContext(audio, ctx)) return;
-      } catch (webAudioError) {
-        console.warn("Amy WebAudio playback failed; trying native audio", webAudioError);
-      }
-
-      try {
-        if (await playWithAudioElement(audio)) return;
-      } catch (nativeAudioError) {
-        console.warn("Amy native audio playback failed", nativeAudioError);
-      }
-
-      throw new Error("Audio playback was blocked by the browser");
-    } catch (e: unknown) {
-      setSpeaking(false);
-      // Autoplay is often blocked until the user interacts — that's not an error,
-      // they can use the "Play voice" button. Only surface real config issues.
-      const msg = errorMessage(e, "");
-      if (/not configured|voice error|api/i.test(msg)) {
-        setVoiceNotice("Voice isn't available right now.");
-      } else {
-        setVoiceNotice('Tap "Play voice" to hear Amy.');
-      }
-    }
+    speakerRef.current = speaker;
+    speaker.feed(text);
+    speaker.flush();
   }
 
   async function handleSend(text?: string) {
     const content = (text ?? input).trim();
     if (!content || sending) return;
-    const voicePrime = voiceOn ? primeVoicePlayback().catch(() => null) : undefined;
     setInput("");
     setSending(true);
-    // optimistic user bubble
     qc.setQueryData<Msg[]>(["amy-messages"], (old = []) => [
       ...old,
       { id: `tmp-${Date.now()}`, role: "user", content, created_at: new Date().toISOString() },
@@ -314,13 +135,13 @@ export function AmyAssistant() {
       const res = await send({
         data: {
           message: content,
-          mood: settings.mood,
+          moods: buildMoodTextDirective(settings),
           humor: settings.humor,
           verbosity: settings.verbosity,
         },
       });
       await qc.invalidateQueries({ queryKey: ["amy-messages"] });
-      void playVoice(res.reply, voicePrime);
+      playVoice(res.reply);
     } catch (e: unknown) {
       qc.setQueryData<Msg[]>(["amy-messages"], (old = []) => [
         ...old,
@@ -348,7 +169,6 @@ export function AmyAssistant() {
       return;
     }
     const rec = new SR();
-    if (voiceOn) void primeVoicePlayback();
     rec.lang = "en-US";
     rec.interimResults = false;
     rec.continuous = false;
@@ -371,14 +191,10 @@ export function AmyAssistant() {
 
   return (
     <>
-      <audio ref={audioRef} hidden />
       {/* Launcher */}
       {!open && (
         <button
-          onClick={() => {
-            setOpen(true);
-            if (voiceOn) void primeVoicePlayback();
-          }}
+          onClick={() => setOpen(true)}
           className="fixed bottom-5 right-5 z-40 flex items-center gap-2 rounded-full bg-primary text-primary-foreground px-4 py-3 shadow-lg shadow-primary/30 hover:scale-105 transition-transform"
           aria-label="Chat with Amy"
         >
@@ -412,12 +228,13 @@ export function AmyAssistant() {
                 size="icon"
                 className="size-8"
                 title={voiceOn ? "Mute voice" : "Enable voice"}
-                onClick={() => setVoiceOn((v) => {
-                  const next = !v;
-                  if (next) void primeVoicePlayback();
-                  else stopCurrentVoice();
-                  return next;
-                })}
+                onClick={() =>
+                  setVoiceOn((v) => {
+                    const next = !v;
+                    if (!next) stopCurrentVoice();
+                    return next;
+                  })
+                }
               >
                 {voiceOn ? <Volume2 className="size-4" /> : <VolumeX className="size-4" />}
               </Button>
@@ -459,15 +276,15 @@ export function AmyAssistant() {
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-xs font-medium">Voice (premium, realistic)</label>
+                <label className="text-xs font-medium">Voice (free, realistic)</label>
                 <div className="grid grid-cols-2 gap-1.5">
                   {AMY_VOICES.map((v) => (
                     <button
                       key={v.id}
                       type="button"
-                      onClick={() => updateSettings({ voiceId: v.id })}
+                      onClick={() => updateSettings({ voice: v.id })}
                       className={`rounded-lg border px-2 py-1.5 text-left text-[11px] transition ${
-                        settings.voiceId === v.id
+                        settings.voice === v.id
                           ? "border-primary bg-primary/10"
                           : "border-border hover:bg-muted"
                       }`}
@@ -480,23 +297,29 @@ export function AmyAssistant() {
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-xs font-medium">Mood</label>
-                <div className="grid grid-cols-2 gap-1.5">
-                  {AMY_MOODS.map((m) => (
-                    <button
-                      key={m.id}
-                      type="button"
-                      onClick={() => updateSettings({ mood: m.id })}
-                      className={`rounded-lg border px-2 py-1.5 text-left text-[11px] transition ${
-                        settings.mood === m.id
-                          ? "border-primary bg-primary/10"
-                          : "border-border hover:bg-muted"
-                      }`}
-                    >
-                      <div className="font-semibold">{m.label}</div>
-                      <div className="text-muted-foreground">{m.blurb}</div>
-                    </button>
-                  ))}
+                <label className="text-xs font-medium">
+                  Mood <span className="text-muted-foreground">(combine any)</span>
+                </label>
+                <div className="flex flex-wrap gap-1.5">
+                  {AMY_MOOD_TAGS.map((m) => {
+                    const active = settings.moods.includes(m.id);
+                    return (
+                      <button
+                        key={m.id}
+                        type="button"
+                        title={m.blurb}
+                        onClick={() => toggleMood(m.id)}
+                        className={`rounded-full border px-3 py-1 text-[11px] font-medium transition ${
+                          active
+                            ? "border-primary bg-primary/15 text-foreground"
+                            : "border-border text-muted-foreground hover:bg-muted"
+                        }`}
+                      >
+                        {active ? "✓ " : ""}
+                        {m.label}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
@@ -538,13 +361,19 @@ export function AmyAssistant() {
 
               <div className="space-y-1">
                 <label className="flex items-center justify-between text-xs font-medium">
-                  <span>Voice speed</span>
-                  <span className="text-muted-foreground">{settings.speed.toFixed(2)}x</span>
+                  <span>Speech speed</span>
+                  <span className="text-muted-foreground">
+                    {settings.speed <= 0.9
+                      ? "Slow & comedic"
+                      : settings.speed >= 1.15
+                        ? "Fast & energetic"
+                        : "Natural"}
+                  </span>
                 </label>
                 <input
                   type="range"
                   min={0.7}
-                  max={1.2}
+                  max={1.3}
                   step={0.05}
                   value={settings.speed}
                   onChange={(e) => updateSettings({ speed: Number(e.target.value) })}
@@ -552,40 +381,29 @@ export function AmyAssistant() {
                 />
               </div>
 
-              <div className="space-y-1">
-                <label className="flex items-center justify-between text-xs font-medium">
-                  <span>Voice stability</span>
-                  <span className="text-muted-foreground">{Math.round(settings.stability * 100)}%</span>
-                </label>
-                <input
-                  type="range"
-                  min={0}
-                  max={1}
-                  step={0.05}
-                  value={settings.stability}
-                  onChange={(e) => updateSettings({ stability: Number(e.target.value) })}
-                  className="w-full accent-primary"
-                />
-                <p className="text-[10px] text-muted-foreground">
-                  Lower = more expressive & emotional. Higher = calmer & consistent.
-                </p>
-              </div>
-
-              <div className="space-y-1">
-                <label className="flex items-center justify-between text-xs font-medium">
-                  <span>Voice expressiveness</span>
-                  <span className="text-muted-foreground">{Math.round(settings.style * 100)}%</span>
-                </label>
-                <input
-                  type="range"
-                  min={0}
-                  max={1}
-                  step={0.05}
-                  value={settings.style}
-                  onChange={(e) => updateSettings({ style: Number(e.target.value) })}
-                  className="w-full accent-primary"
-                />
-              </div>
+              <label className="flex items-center justify-between gap-2 pt-1">
+                <span className="text-xs font-medium">
+                  Browser Audio Fallback
+                  <span className="block text-[10px] text-muted-foreground">
+                    Use your browser's voice if the cloud voice fails.
+                  </span>
+                </span>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={settings.browserFallback}
+                  onClick={() => updateSettings({ browserFallback: !settings.browserFallback })}
+                  className={`relative h-5 w-9 shrink-0 rounded-full transition ${
+                    settings.browserFallback ? "bg-primary" : "bg-muted-foreground/40"
+                  }`}
+                >
+                  <span
+                    className={`absolute top-0.5 size-4 rounded-full bg-background transition ${
+                      settings.browserFallback ? "left-[18px]" : "left-0.5"
+                    }`}
+                  />
+                </button>
+              </label>
 
               <div className="flex items-center justify-between pt-1">
                 <button
@@ -602,20 +420,17 @@ export function AmyAssistant() {
                   size="sm"
                   variant="outline"
                   className="h-7 text-[11px]"
-                  onClick={() => {
-                    const prime = primeVoicePlayback().catch(() => null);
-                    void playVoice(
-                      "Hey, it's Amy. This is how I sound with your current settings — like it, or should we spice it up a little?",
-                      prime,
-                    );
-                  }}
+                  onClick={() =>
+                    playVoice(
+                      "Hey, it's Amy! This is how I sound with your current settings — like it, or should we spice it up a little?",
+                    )
+                  }
                 >
                   <Volume2 className="size-3 mr-1" /> Preview voice
                 </Button>
               </div>
             </div>
           )}
-
 
           <div ref={scrollRef} className="flex-1 overflow-y-auto px-3 py-4 space-y-3">
             {messages.length === 0 && !sending && (
@@ -643,10 +458,7 @@ export function AmyAssistant() {
                   {m.role === "assistant" && voiceOn && (
                     <button
                       type="button"
-                      onClick={() => {
-                        const voicePrime = primeVoicePlayback().catch(() => null);
-                        void playVoice(m.content, voicePrime);
-                      }}
+                      onClick={() => playVoice(m.content)}
                       className="mt-2 flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground"
                       aria-label="Play Amy's voice"
                     >
@@ -656,9 +468,6 @@ export function AmyAssistant() {
                 </div>
               </div>
             ))}
-            {voiceNotice && (
-              <div className="text-center text-xs text-muted-foreground px-3">{voiceNotice}</div>
-            )}
             {sending && (
               <div className="flex justify-start">
                 <div className="bg-muted rounded-2xl rounded-bl-sm px-3.5 py-2 text-sm text-muted-foreground flex items-center gap-2">

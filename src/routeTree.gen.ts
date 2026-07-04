@@ -12,7 +12,6 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as ApiAmyVoiceRouteImport } from './routes/api/amy-voice'
 import { Route as AuthenticatedSignalsRouteImport } from './routes/_authenticated/signals'
 import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
 import { Route as AuthenticatedJournalRouteImport } from './routes/_authenticated/journal'
@@ -31,11 +30,6 @@ const AuthenticatedRoute = AuthenticatedRouteImport.update({
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiAmyVoiceRoute = ApiAmyVoiceRouteImport.update({
-  id: '/api/amy-voice',
-  path: '/api/amy-voice',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthenticatedSignalsRoute = AuthenticatedSignalsRouteImport.update({
@@ -72,7 +66,6 @@ export interface FileRoutesByFullPath {
   '/journal': typeof AuthenticatedJournalRoute
   '/settings': typeof AuthenticatedSettingsRoute
   '/signals': typeof AuthenticatedSignalsRoute
-  '/api/amy-voice': typeof ApiAmyVoiceRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -82,7 +75,6 @@ export interface FileRoutesByTo {
   '/journal': typeof AuthenticatedJournalRoute
   '/settings': typeof AuthenticatedSettingsRoute
   '/signals': typeof AuthenticatedSignalsRoute
-  '/api/amy-voice': typeof ApiAmyVoiceRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -94,7 +86,6 @@ export interface FileRoutesById {
   '/_authenticated/journal': typeof AuthenticatedJournalRoute
   '/_authenticated/settings': typeof AuthenticatedSettingsRoute
   '/_authenticated/signals': typeof AuthenticatedSignalsRoute
-  '/api/amy-voice': typeof ApiAmyVoiceRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -106,7 +97,6 @@ export interface FileRouteTypes {
     | '/journal'
     | '/settings'
     | '/signals'
-    | '/api/amy-voice'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -116,7 +106,6 @@ export interface FileRouteTypes {
     | '/journal'
     | '/settings'
     | '/signals'
-    | '/api/amy-voice'
   id:
     | '__root__'
     | '/'
@@ -127,14 +116,12 @@ export interface FileRouteTypes {
     | '/_authenticated/journal'
     | '/_authenticated/settings'
     | '/_authenticated/signals'
-    | '/api/amy-voice'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthenticatedRoute: typeof AuthenticatedRouteWithChildren
   LoginRoute: typeof LoginRoute
-  ApiAmyVoiceRoute: typeof ApiAmyVoiceRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -158,13 +145,6 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/amy-voice': {
-      id: '/api/amy-voice'
-      path: '/api/amy-voice'
-      fullPath: '/api/amy-voice'
-      preLoaderRoute: typeof ApiAmyVoiceRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_authenticated/signals': {
@@ -229,7 +209,6 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthenticatedRoute: AuthenticatedRouteWithChildren,
   LoginRoute: LoginRoute,
-  ApiAmyVoiceRoute: ApiAmyVoiceRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
