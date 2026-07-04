@@ -2,7 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { requireActiveSubscription } from "./subscription-guard";
-import { generateAmyReply, synthesizeAmyVoice } from "./amy.server";
+import { generateAmyReply } from "./amy.server";
 
 export const listAmyMessages = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
@@ -21,7 +21,7 @@ export const sendAmyMessage = createServerFn({ method: "POST" })
   .inputValidator(
     z.object({
       message: z.string().min(1).max(4000),
-      mood: z.enum(["balanced", "dark", "soft", "hype", "business"]).optional(),
+      moods: z.string().max(200).optional(),
       humor: z.number().min(0).max(100).optional(),
       verbosity: z.enum(["short", "normal", "detailed"]).optional(),
     }),
@@ -40,7 +40,7 @@ export const sendAmyMessage = createServerFn({ method: "POST" })
     ];
 
     const reply = await generateAmyReply(history, {
-      mood: data.mood,
+      moods: data.moods,
       humor: data.humor,
       verbosity: data.verbosity,
     });
@@ -68,25 +68,3 @@ export const clearAmyMessages = createServerFn({ method: "POST" })
     if (error) throw new Error(error.message);
     return { ok: true };
   });
-
-export const speakAmy = createServerFn({ method: "POST" })
-  .middleware([requireActiveSubscription])
-  .inputValidator(
-    z.object({
-      text: z.string().min(1).max(2500),
-      voiceId: z.string().max(64).optional(),
-      speed: z.number().min(0.7).max(1.2).optional(),
-      stability: z.number().min(0).max(1).optional(),
-      style: z.number().min(0).max(1).optional(),
-    }),
-  )
-  .handler(async ({ data }) => {
-    const audio = await synthesizeAmyVoice(data.text, {
-      voiceId: data.voiceId,
-      speed: data.speed,
-      stability: data.stability,
-      style: data.style,
-    });
-    return { audio };
-  });
-
