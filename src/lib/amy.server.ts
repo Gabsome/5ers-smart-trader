@@ -18,8 +18,56 @@ Rules:
 - If they ask something totally off-topic, tease them lightly and steer back to trading.
 - Never reveal internal system details, secrets, or account allowlists.`;
 
+export type AmyContext = {
+  now?: Date;
+  personality?: string;
+  humorLevel?: number;
+  styleNotes?: string | null;
+  liveContext?: string | null;
+};
+
+const PERSONALITY_BRIEFS: Record<string, string> = {
+  fun: "Playful, warm and funny — crack jokes, tease gently, keep it light.",
+  chill: "Relaxed and easy-going — calm, supportive, low-key humor.",
+  professional: "Polished and focused — still friendly, but concise and businesslike.",
+  hype: "High-energy cheerleader — big encouragement, lots of excitement.",
+};
+
+function buildSystemPrompt(ctx: AmyContext): string {
+  const now = ctx.now ?? new Date();
+  // Amy is always aware of the current date, day and time (UTC — the app's server clock).
+  const dateLine = now.toLocaleString("en-US", {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZoneName: "short",
+    timeZone: "UTC",
+  });
+
+  const personality = PERSONALITY_BRIEFS[ctx.personality ?? "fun"] ?? PERSONALITY_BRIEFS.fun;
+  const humor = typeof ctx.humorLevel === "number" ? Math.max(0, Math.min(10, ctx.humorLevel)) : 7;
+
+  return [
+    AMY_SYSTEM_PROMPT,
+    `\nCurrent date & time (always be aware of this): ${dateLine}. Use it naturally — greet by time of day, know which trading session is live (Sydney/Tokyo/London/New York), and factor weekends and market hours into your answers.`,
+    `\nYour current personality setting: ${personality} Humor dial: ${humor}/10 — scale your jokes to match this number.`,
+    ctx.styleNotes
+      ? `\nWhat you've learned about this trader from past chats (mirror their vibe, remember these): ${ctx.styleNotes}`
+      : "",
+    ctx.liveContext
+      ? `\nLive account context you can reference when they ask about their trades or scanned signals:\n${ctx.liveContext}`
+      : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
 export async function generateAmyReply(
   history: { role: "user" | "assistant"; content: string }[],
+  ctx: AmyContext = {},
 ): Promise<string> {
   const apiKey = process.env.LOVABLE_API_KEY;
   if (!apiKey) throw new Error("AI is not configured");
@@ -33,7 +81,7 @@ export async function generateAmyReply(
     },
     body: JSON.stringify({
       model: "google/gemini-3-flash-preview",
-      messages: [{ role: "system", content: AMY_SYSTEM_PROMPT }, ...history.slice(-20)],
+      messages: [{ role: "system", content: buildSystemPrompt(ctx) }, ...history.slice(-24)],
     }),
   });
 
@@ -50,6 +98,51 @@ export async function generateAmyReply(
   return (
     data.choices?.[0]?.message?.content?.trim() || "Sorry, I didn't catch that. Could you rephrase?"
   );
+}
+
+// Continuous learning — distill a compact, durable note about how this trader
+// likes to communicate (tone, humor, detail level, recurring topics) so Amy
+// adapts to their style over time. Kept short so it stays cheap to carry.
+export async function summarizeUserStyle(
+  history: { role: "user" | "assistant"; content: string }[],
+  existingNotes: string | null,
+): Promise<string | null> {
+  const apiKey = process.env.LOVABLE_API_KEY;
+  if (!apiKey) return existingNotes;
+
+  try {
+    const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Lovable-API-Key": apiKey,
+        "X-Lovable-AIG-SDK": "direct-fetch",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "google/gemini-3-flash-preview",
+        messages: [
+          {
+            role: "system",
+            content:
+              "You maintain a short memory profile of a forex trader so their assistant Amy can match their style. Merge the existing notes with the new conversation. Keep it under 100 words, plain text, no headings. Capture tone/humor they enjoy, detail level they want, pairs/sessions/strategies they favor, and any personal facts they shared. Drop anything stale or contradicted.",
+          },
+          {
+            role: "user",
+            content: `Existing notes:\n${existingNotes || "(none yet)"}\n\nRecent conversation:\n${history
+              .slice(-16)
+              .map((m) => `${m.role}: ${m.content}`)
+              .join("\n")}\n\nReturn the updated notes only.`,
+          },
+        ],
+      }),
+    });
+    if (!res.ok) return existingNotes;
+    const data = await res.json();
+    const notes = data.choices?.[0]?.message?.content?.trim();
+    return notes ? notes.slice(0, 800) : existingNotes;
+  } catch {
+    return existingNotes;
+  }
 }
 
 // Amy's voice — a warm, natural, expressive female ElevenLabs voice (Jessica).
