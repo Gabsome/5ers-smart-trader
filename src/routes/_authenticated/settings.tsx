@@ -6,7 +6,9 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { getProfile, updateProfile, getDashboard } from "@/lib/trades.functions";
+import { getAmySettings, updateAmySettings } from "@/lib/amy.functions";
 
 export const Route = createFileRoute("/_authenticated/settings")({
   component: Settings,
