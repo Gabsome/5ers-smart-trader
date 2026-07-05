@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { createClient } from "@supabase/supabase-js";
+import { hasActiveSubscription } from "@/lib/access.server";
 
 // Amy's voice — warm, natural, expressive female ElevenLabs voice (Jessica).
 const AMY_VOICE_ID = "cgSgspJ2msm6clMCkdW9";
@@ -7,29 +8,46 @@ const AMY_VOICE_ID = "cgSgspJ2msm6clMCkdW9";
 // arrive, instead of waiting for the whole clip to be synthesized.
 const PCM_SAMPLE_RATE = 24000;
 
-async function verifyUser(request: Request): Promise<boolean> {
+// Verifies the caller is authenticated AND has an active paid subscription
+// (or is a free-tier email). Returns 401 when unauthenticated, 402 when the
+// account is not entitled to consume paid voice resources.
+async function verifyPaidUser(request: Request): Promise<number> {
   const SUPABASE_URL = process.env.SUPABASE_URL;
   const SUPABASE_PUBLISHABLE_KEY = process.env.SUPABASE_PUBLISHABLE_KEY;
-  if (!SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY) return false;
+  if (!SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY) return 401;
 
   const authHeader = request.headers.get("authorization");
-  if (!authHeader?.startsWith("Bearer ")) return false;
+  if (!authHeader?.startsWith("Bearer ")) return 401;
   const token = authHeader.replace("Bearer ", "");
-  if (!token) return false;
+  if (!token) return 401;
 
   const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
+    global: { headers: { Authorization: `Bearer ${token}` } },
     auth: { persistSession: false, autoRefreshToken: false },
   });
   const { data, error } = await supabase.auth.getClaims(token);
-  return !error && !!data?.claims?.sub;
+  const userId = data?.claims?.sub;
+  if (error || !userId) return 401;
+
+  const email =
+    (data.claims as any)?.email ??
+    (data.claims as any)?.user_metadata?.email ??
+    null;
+
+  const active = await hasActiveSubscription(supabase, userId, email);
+  return active ? 200 : 402;
 }
 
 export const Route = createFileRoute("/api/amy-voice")({
   server: {
     handlers: {
       POST: async ({ request }) => {
-        if (!(await verifyUser(request))) {
-          return new Response("Unauthorized", { status: 401 });
+        const status = await verifyPaidUser(request);
+        if (status !== 200) {
+          return new Response(
+            status === 402 ? "Subscription required" : "Unauthorized",
+            { status },
+          );
         }
 
         const apiKey = process.env.ELEVENLABS_API_KEY;
