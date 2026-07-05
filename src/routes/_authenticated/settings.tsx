@@ -104,6 +104,90 @@ function Settings() {
           This dashboard does <strong className="text-foreground">not</strong> place trades on your broker — log entries here after you execute them on the broker so tracking stays accurate.
         </p>
       </div>
+
+      <AmySettings />
+    </div>
+  );
+}
+
+const PERSONALITIES = [
+  { value: "fun", label: "Fun & playful" },
+  { value: "chill", label: "Chill & easy-going" },
+  { value: "professional", label: "Professional" },
+  { value: "hype", label: "Hype cheerleader" },
+] as const;
+
+function AmySettings() {
+  const gFn = useServerFn(getAmySettings);
+  const uFn = useServerFn(updateAmySettings);
+  const qc = useQueryClient();
+  const { data: amy } = useQuery({ queryKey: ["amy-settings"], queryFn: () => gFn() });
+
+  const [form, setForm] = useState({ amy_personality: "fun", amy_humor_level: 7, amy_context_trades: true });
+  useEffect(() => {
+    if (amy) setForm({
+      amy_personality: amy.amy_personality ?? "fun",
+      amy_humor_level: amy.amy_humor_level ?? 7,
+      amy_context_trades: amy.amy_context_trades ?? true,
+    });
+  }, [amy]);
+
+  const save = useMutation({
+    mutationFn: () => uFn({ data: {
+      amy_personality: form.amy_personality as "fun" | "chill" | "professional" | "hype",
+      amy_humor_level: Number(form.amy_humor_level),
+      amy_context_trades: form.amy_context_trades,
+    } }),
+    onSuccess: () => {
+      toast.success("Amy settings saved");
+      qc.invalidateQueries({ queryKey: ["amy-settings"] });
+    },
+    onError: (e: any) => toast.error("Save failed", { description: e?.message }),
+  });
+
+  return (
+    <div className="rounded-xl border border-border bg-card p-6 space-y-4">
+      <div>
+        <h2 className="font-semibold flex items-center gap-2">👩🏽 Amy — your assistant</h2>
+        <p className="text-sm text-muted-foreground mt-1">
+          Amy always knows the date, day and time, remembers your chats to match your style, and can talk through your trades and scanned signals.
+        </p>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <Field label="Personality">
+          <select
+            value={form.amy_personality}
+            onChange={(e) => setForm({ ...form, amy_personality: e.target.value })}
+            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+          >
+            {PERSONALITIES.map((p) => (
+              <option key={p.value} value={p.value}>{p.label}</option>
+            ))}
+          </select>
+        </Field>
+        <Field label={`Humor level: ${form.amy_humor_level}/10`}>
+          <input
+            type="range" min={0} max={10} step={1}
+            value={form.amy_humor_level}
+            onChange={(e) => setForm({ ...form, amy_humor_level: Number(e.target.value) })}
+            className="w-full accent-primary mt-3"
+          />
+        </Field>
+      </div>
+
+      <div className="flex items-center justify-between rounded-lg border border-border p-3">
+        <div>
+          <div className="text-sm font-medium">Let Amy see my trades & signals</div>
+          <div className="text-xs text-muted-foreground">She can answer questions about your open positions and scanned setups.</div>
+        </div>
+        <Switch
+          checked={form.amy_context_trades}
+          onCheckedChange={(v) => setForm({ ...form, amy_context_trades: v })}
+        />
+      </div>
+
+      <Button onClick={() => save.mutate()} disabled={save.isPending}>Save Amy settings</Button>
     </div>
   );
 }
