@@ -100,6 +100,51 @@ export async function generateAmyReply(
   );
 }
 
+// Continuous learning — distill a compact, durable note about how this trader
+// likes to communicate (tone, humor, detail level, recurring topics) so Amy
+// adapts to their style over time. Kept short so it stays cheap to carry.
+export async function summarizeUserStyle(
+  history: { role: "user" | "assistant"; content: string }[],
+  existingNotes: string | null,
+): Promise<string | null> {
+  const apiKey = process.env.LOVABLE_API_KEY;
+  if (!apiKey) return existingNotes;
+
+  try {
+    const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Lovable-API-Key": apiKey,
+        "X-Lovable-AIG-SDK": "direct-fetch",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "google/gemini-3-flash-preview",
+        messages: [
+          {
+            role: "system",
+            content:
+              "You maintain a short memory profile of a forex trader so their assistant Amy can match their style. Merge the existing notes with the new conversation. Keep it under 100 words, plain text, no headings. Capture tone/humor they enjoy, detail level they want, pairs/sessions/strategies they favor, and any personal facts they shared. Drop anything stale or contradicted.",
+          },
+          {
+            role: "user",
+            content: `Existing notes:\n${existingNotes || "(none yet)"}\n\nRecent conversation:\n${history
+              .slice(-16)
+              .map((m) => `${m.role}: ${m.content}`)
+              .join("\n")}\n\nReturn the updated notes only.`,
+          },
+        ],
+      }),
+    });
+    if (!res.ok) return existingNotes;
+    const data = await res.json();
+    const notes = data.choices?.[0]?.message?.content?.trim();
+    return notes ? notes.slice(0, 800) : existingNotes;
+  } catch {
+    return existingNotes;
+  }
+}
+
 // Amy's voice — a warm, natural, expressive female ElevenLabs voice (Jessica).
 const AMY_VOICE_ID = "cgSgspJ2msm6clMCkdW9";
 
