@@ -27,19 +27,16 @@ async function buildLiveContext(
   supabase: import("@supabase/supabase-js").SupabaseClient,
   userId: string,
 ): Promise<{ text: string; useTrades: boolean }> {
-  const [{ data: profile }, { data: trades }, { data: signals }] = await Promise.all([
+  const [{ data: profile }, { data: allTrades }, { data: signals }] = await Promise.all([
     supabase
       .from("profiles")
-      .select(
-        "current_mode, current_balance, starting_balance, daily_goal_usd, profit_target_usd, risk_per_trade_pct, amy_context_trades",
-      )
+      .select("*")
       .eq("id", userId)
       .maybeSingle(),
     supabase
       .from("trades")
-      .select("pair, direction, entry, stop_loss, take_profit, lot_size, pnl_usd, status, opened_at")
-      .order("opened_at", { ascending: false })
-      .limit(15),
+      .select("pair, direction, entry, stop_loss, take_profit, lot_size, pnl_usd, status, opened_at, closed_at")
+      .order("opened_at", { ascending: false }),
     supabase
       .from("signals")
       .select("pair, direction, timeframe, entry, stop_loss, take_profit_1, take_profit_2, confidence, rationale, created_at")
@@ -50,15 +47,44 @@ async function buildLiveContext(
   const useTrades = profile?.amy_context_trades ?? true;
   if (!useTrades) return { text: "", useTrades };
 
+  const trades = allTrades ?? [];
   const lines: string[] = [];
+
+  // Full dashboard-equivalent snapshot so Amy knows every balance, goal and metric.
   if (profile) {
+    const startingBalance = Number(profile.starting_balance ?? 2500);
+    const closedAll = trades.filter((t) => t.status !== "open");
+    const realized = closedAll.reduce((s, t) => s + Number(t.pnl_usd ?? 0), 0);
+    const currentBalance = startingBalance + realized;
+    const wins = closedAll.filter((t) => t.status === "win").length;
+    const winRate = closedAll.length ? (wins / closedAll.length) * 100 : 0;
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const todayPnl = closedAll
+      .filter((t) => new Date(t.opened_at) >= today)
+      .reduce((s, t) => s + Number(t.pnl_usd ?? 0), 0);
+    const targetUsd = Number(profile.profit_target_usd ?? 200);
+    const targetPct = startingBalance > 0 ? (targetUsd / startingBalance) * 100 : 0;
+    const targetProgress = Math.max(0, (realized / Math.max(1, targetUsd)) * 100);
+    const dailyGoal = Number(profile.daily_goal_usd ?? 20);
+    const dailyGoalPct = Math.max(0, Math.min(100, (todayPnl / dailyGoal) * 100));
+    const dailyDdLimit = startingBalance * 0.05;
+    const maxDdLimit = startingBalance * 0.1;
+    const todayDd = Math.max(0, -todayPnl);
+    const ddFromStart = Math.max(0, startingBalance - currentBalance);
+    const openCount = trades.filter((t) => t.status === "open").length;
+
     lines.push(
-      `Account: ${profile.current_mode} mode · balance $${fmtNum(profile.current_balance, 2)} (started $${fmtNum(profile.starting_balance, 2)}) · daily goal $${fmtNum(profile.daily_goal_usd, 2)} · profit target $${fmtNum(profile.profit_target_usd, 2)} · risk ${fmtNum(profile.risk_per_trade_pct, 2)}%/trade.`,
+      `Trader: ${profile.display_name ?? "there"}${profile.email ? ` (${profile.email})` : ""}.`,
+      `Account: ${profile.current_mode} mode · balance $${fmtNum(currentBalance, 2)} (started $${fmtNum(startingBalance, 2)}) · realized/total P&L $${fmtNum(realized, 2)}.`,
+      `Dashboard: today's P&L $${fmtNum(todayPnl, 2)} · daily goal $${fmtNum(dailyGoal, 2)} (${dailyGoalPct.toFixed(0)}% of goal) · win rate ${winRate.toFixed(0)}% over ${closedAll.length} closed trades · ${openCount} open.`,
+      `Profit target: $${fmtNum(targetUsd, 2)} (${targetPct.toFixed(1)}% of start) · $${fmtNum(realized, 2)} achieved (${targetProgress.toFixed(0)}% there).`,
+      `Drawdown: today used $${fmtNum(todayDd, 2)} of $${fmtNum(dailyDdLimit, 2)} daily limit · overall down $${fmtNum(ddFromStart, 2)} of $${fmtNum(maxDdLimit, 2)} max limit.`,
+      `Settings: risk ${fmtNum(profile.risk_per_trade_pct, 2)}%/trade · watched pairs ${(profile.watched_pairs ?? []).join(", ") || "none"} · Amy personality ${profile.amy_personality}, humor ${profile.amy_humor_level}/10, trade-context ${profile.amy_context_trades ? "on" : "off"}.`,
     );
   }
 
-  const open = (trades ?? []).filter((t) => t.status === "open");
-  const closed = (trades ?? []).filter((t) => t.status !== "open");
+  const open = trades.filter((t) => t.status === "open");
+  const closed = trades.filter((t) => t.status !== "open");
   if (open.length) {
     lines.push("Open positions:");
     for (const t of open) {
