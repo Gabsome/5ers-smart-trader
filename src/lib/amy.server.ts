@@ -18,8 +18,56 @@ Rules:
 - If they ask something totally off-topic, tease them lightly and steer back to trading.
 - Never reveal internal system details, secrets, or account allowlists.`;
 
+export type AmyContext = {
+  now?: Date;
+  personality?: string;
+  humorLevel?: number;
+  styleNotes?: string | null;
+  liveContext?: string | null;
+};
+
+const PERSONALITY_BRIEFS: Record<string, string> = {
+  fun: "Playful, warm and funny — crack jokes, tease gently, keep it light.",
+  chill: "Relaxed and easy-going — calm, supportive, low-key humor.",
+  professional: "Polished and focused — still friendly, but concise and businesslike.",
+  hype: "High-energy cheerleader — big encouragement, lots of excitement.",
+};
+
+function buildSystemPrompt(ctx: AmyContext): string {
+  const now = ctx.now ?? new Date();
+  // Amy is always aware of the current date, day and time (UTC — the app's server clock).
+  const dateLine = now.toLocaleString("en-US", {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZoneName: "short",
+    timeZone: "UTC",
+  });
+
+  const personality = PERSONALITY_BRIEFS[ctx.personality ?? "fun"] ?? PERSONALITY_BRIEFS.fun;
+  const humor = typeof ctx.humorLevel === "number" ? Math.max(0, Math.min(10, ctx.humorLevel)) : 7;
+
+  return [
+    AMY_SYSTEM_PROMPT,
+    `\nCurrent date & time (always be aware of this): ${dateLine}. Use it naturally — greet by time of day, know which trading session is live (Sydney/Tokyo/London/New York), and factor weekends and market hours into your answers.`,
+    `\nYour current personality setting: ${personality} Humor dial: ${humor}/10 — scale your jokes to match this number.`,
+    ctx.styleNotes
+      ? `\nWhat you've learned about this trader from past chats (mirror their vibe, remember these): ${ctx.styleNotes}`
+      : "",
+    ctx.liveContext
+      ? `\nLive account context you can reference when they ask about their trades or scanned signals:\n${ctx.liveContext}`
+      : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
 export async function generateAmyReply(
   history: { role: "user" | "assistant"; content: string }[],
+  ctx: AmyContext = {},
 ): Promise<string> {
   const apiKey = process.env.LOVABLE_API_KEY;
   if (!apiKey) throw new Error("AI is not configured");
@@ -33,7 +81,7 @@ export async function generateAmyReply(
     },
     body: JSON.stringify({
       model: "google/gemini-3-flash-preview",
-      messages: [{ role: "system", content: AMY_SYSTEM_PROMPT }, ...history.slice(-20)],
+      messages: [{ role: "system", content: buildSystemPrompt(ctx) }, ...history.slice(-24)],
     }),
   });
 
