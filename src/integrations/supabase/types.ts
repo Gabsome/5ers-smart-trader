@@ -40,6 +40,10 @@ export type Database = {
       }
       profiles: {
         Row: {
+          amy_context_trades: boolean
+          amy_humor_level: number
+          amy_personality: string
+          amy_style_notes: string | null
           created_at: string
           current_balance: number
           current_mode: string
@@ -54,6 +58,10 @@ export type Database = {
           watched_pairs: string[]
         }
         Insert: {
+          amy_context_trades?: boolean
+          amy_humor_level?: number
+          amy_personality?: string
+          amy_style_notes?: string | null
           created_at?: string
           current_balance?: number
           current_mode?: string
@@ -68,6 +76,10 @@ export type Database = {
           watched_pairs?: string[]
         }
         Update: {
+          amy_context_trades?: boolean
+          amy_humor_level?: number
+          amy_personality?: string
+          amy_style_notes?: string | null
           created_at?: string
           current_balance?: number
           current_mode?: string
