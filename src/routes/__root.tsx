@@ -84,10 +84,6 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
         href: "https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&display=swap",
       },
     ],
-    scripts: [
-      // Puter.js — free, client-side AI voice (OpenAI gpt-4o-mini-tts) for Amy.
-      { src: "https://js.puter.com/v2/", defer: true },
-    ],
   }),
   shellComponent: RootShell,
   component: RootComponent,

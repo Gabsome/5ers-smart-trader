@@ -2,7 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { requireActiveSubscription } from "./subscription-guard";
-import { generateAmyReply } from "./amy.server";
+import { generateAmyReply, synthesizeAmyVoice } from "./amy.server";
 
 export const listAmyMessages = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
@@ -18,14 +18,7 @@ export const listAmyMessages = createServerFn({ method: "GET" })
 
 export const sendAmyMessage = createServerFn({ method: "POST" })
   .middleware([requireActiveSubscription])
-  .inputValidator(
-    z.object({
-      message: z.string().min(1).max(4000),
-      moods: z.string().max(200).optional(),
-      humor: z.number().min(0).max(100).optional(),
-      verbosity: z.enum(["short", "normal", "detailed"]).optional(),
-    }),
-  )
+  .inputValidator(z.object({ message: z.string().min(1).max(4000) }))
   .handler(async ({ data, context }) => {
     // Load recent history for context.
     const { data: prior } = await context.supabase
@@ -39,11 +32,7 @@ export const sendAmyMessage = createServerFn({ method: "POST" })
       { role: "user" as const, content: data.message },
     ];
 
-    const reply = await generateAmyReply(history, {
-      moods: data.moods,
-      humor: data.humor,
-      verbosity: data.verbosity,
-    });
+    const reply = await generateAmyReply(history);
 
     // Persist both turns.
     const { data: inserted, error } = await context.supabase
@@ -68,3 +57,12 @@ export const clearAmyMessages = createServerFn({ method: "POST" })
     if (error) throw new Error(error.message);
     return { ok: true };
   });
+
+export const speakAmy = createServerFn({ method: "POST" })
+  .middleware([requireActiveSubscription])
+  .inputValidator(z.object({ text: z.string().min(1).max(2500) }))
+  .handler(async ({ data }) => {
+    const audio = await synthesizeAmyVoice(data.text);
+    return { audio };
+  });
+
