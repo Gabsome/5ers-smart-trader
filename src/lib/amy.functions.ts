@@ -4,16 +4,94 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { requireActiveSubscription } from "./subscription-guard";
 import { generateAmyReply, summarizeUserStyle, synthesizeAmyVoice } from "./amy.server";
 
-export const listAmyMessages = createServerFn({ method: "GET" })
+async function ensureThread(
+  supabase: import("@supabase/supabase-js").SupabaseClient,
+  userId: string,
+  threadId?: string | null,
+): Promise<string> {
+  if (threadId) {
+    const { data } = await supabase
+      .from("amy_threads")
+      .select("id")
+      .eq("id", threadId)
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (data?.id) return data.id;
+  }
+  const { data, error } = await supabase
+    .from("amy_threads")
+    .insert({ user_id: userId, title: "New chat" })
+    .select("id")
+    .single();
+  if (error) throw new Error(error.message);
+  return data.id;
+}
+
+export const listAmyThreads = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     const { data, error } = await context.supabase
-      .from("amy_messages")
-      .select("id, role, content, created_at")
-      .order("created_at", { ascending: true })
-      .limit(200);
+      .from("amy_threads")
+      .select("id, title, updated_at, created_at")
+      .eq("user_id", context.userId)
+      .order("updated_at", { ascending: false })
+      .limit(100);
     if (error) throw new Error(error.message);
     return data ?? [];
+  });
+
+export const createAmyThread = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { data, error } = await context.supabase
+      .from("amy_threads")
+      .insert({ user_id: context.userId, title: "New chat" })
+      .select("id, title, updated_at, created_at")
+      .single();
+    if (error) throw new Error(error.message);
+    return data;
+  });
+
+export const deleteAmyThread = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator(z.object({ threadId: z.string().uuid() }))
+  .handler(async ({ data, context }) => {
+    const { error } = await context.supabase
+      .from("amy_threads")
+      .delete()
+      .eq("id", data.threadId)
+      .eq("user_id", context.userId);
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
+export const deleteAmyMessage = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator(z.object({ messageId: z.string() }))
+  .handler(async ({ data, context }) => {
+    const { error } = await context.supabase
+      .from("amy_messages")
+      .delete()
+      .eq("id", data.messageId)
+      .eq("user_id", context.userId);
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
+export const listAmyMessages = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator(z.object({ threadId: z.string().uuid().optional() }).optional())
+  .handler(async ({ data, context }) => {
+    if (!data?.threadId) return [];
+    const { data: rows, error } = await context.supabase
+      .from("amy_messages")
+      .select("id, role, content, created_at")
+      .eq("user_id", context.userId)
+      .eq("thread_id", data.threadId)
+      .order("created_at", { ascending: true })
+      .limit(500);
+    if (error) throw new Error(error.message);
+    return rows ?? [];
   });
 
 function fmtNum(n: unknown, dp = 5) {
@@ -115,15 +193,24 @@ async function buildLiveContext(
 
 export const sendAmyMessage = createServerFn({ method: "POST" })
   .middleware([requireActiveSubscription])
-  .inputValidator(z.object({ message: z.string().min(1).max(4000) }))
+  .inputValidator(
+    z.object({
+      message: z.string().min(1).max(4000),
+      threadId: z.string().uuid().optional(),
+    }),
+  )
   .handler(async ({ data, context }) => {
-    // Load recent history + Amy settings + live account context in parallel.
+    const threadId = await ensureThread(context.supabase, context.userId, data.threadId);
+
+    // Load recent history (this thread) + Amy settings + live account context in parallel.
     const [{ data: prior }, { data: settings }, live] = await Promise.all([
       context.supabase
         .from("amy_messages")
         .select("role, content")
+        .eq("user_id", context.userId)
+        .eq("thread_id", threadId)
         .order("created_at", { ascending: true })
-        .limit(40),
+        .limit(60),
       context.supabase
         .from("profiles")
         .select("amy_personality, amy_humor_level, amy_style_notes")
@@ -145,20 +232,34 @@ export const sendAmyMessage = createServerFn({ method: "POST" })
       liveContext: live.text || null,
     });
 
-    // Persist both turns.
+    // Persist both turns to this thread.
     const { data: inserted, error } = await context.supabase
       .from("amy_messages")
       .insert([
-        { user_id: context.userId, role: "user", content: data.message },
-        { user_id: context.userId, role: "assistant", content: reply },
+        { user_id: context.userId, role: "user", content: data.message, thread_id: threadId },
+        { user_id: context.userId, role: "assistant", content: reply, thread_id: threadId },
       ])
       .select("id, role, content, created_at");
     if (error) throw new Error(error.message);
 
-    // Continuous learning — refresh Amy's memory of the trader's style every few
-    // exchanges so she keeps adapting without a cost on every single message.
+    // Title a brand-new thread from the first user message; always bump updated_at.
+    const isFirst = (prior ?? []).length === 0;
+    const threadUpdate: { updated_at: string; title?: string } = {
+      updated_at: new Date().toISOString(),
+    };
+    if (isFirst) {
+      threadUpdate.title = data.message.slice(0, 48).trim() || "New chat";
+    }
+    await context.supabase
+      .from("amy_threads")
+      .update(threadUpdate)
+      .eq("id", threadId)
+      .eq("user_id", context.userId);
+
+    // Continuous learning — refresh Amy's durable memory (names, instructions,
+    // preferences) every few exchanges so she keeps adapting and never forgets.
     const userTurns = history.filter((m) => m.role === "user").length;
-    if (userTurns % 4 === 0) {
+    if (userTurns % 3 === 0) {
       const updated = await summarizeUserStyle(
         [...history, { role: "assistant" as const, content: reply }],
         settings?.amy_style_notes ?? null,
@@ -171,8 +272,9 @@ export const sendAmyMessage = createServerFn({ method: "POST" })
       }
     }
 
-    return { reply, messages: inserted ?? [] };
+    return { reply, messages: inserted ?? [], threadId };
   });
+
 
 export const getAmySettings = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])

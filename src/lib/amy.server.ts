@@ -55,7 +55,7 @@ function buildSystemPrompt(ctx: AmyContext): string {
     `\nCurrent date & time (always be aware of this): ${dateLine}. Use it naturally — greet by time of day, know which trading session is live (Sydney/Tokyo/London/New York), and factor weekends and market hours into your answers.`,
     `\nYour current personality setting: ${personality} Humor dial: ${humor}/10 — scale your jokes to match this number.`,
     ctx.styleNotes
-      ? `\nWhat you've learned about this trader from past chats (mirror their vibe, remember these): ${ctx.styleNotes}`
+      ? `\nYour long-term memory of this trader (this is durable — treat every line as true and never forget it unless they explicitly tell you to forget or correct it). Remember their name and always use it, honor every standing instruction here, and mirror their vibe:\n${ctx.styleNotes}`
       : "",
     ctx.liveContext
       ? `\nLive account context you can reference when they ask about their trades or scanned signals:\n${ctx.liveContext}`
@@ -124,7 +124,7 @@ export async function summarizeUserStyle(
           {
             role: "system",
             content:
-              "You maintain a short memory profile of a forex trader so their assistant Amy can match their style. Merge the existing notes with the new conversation. Keep it under 100 words, plain text, no headings. Capture tone/humor they enjoy, detail level they want, pairs/sessions/strategies they favor, and any personal facts they shared. Drop anything stale or contradicted.",
+              "You maintain Amy's durable long-term memory profile of a forex trader. Merge the existing notes with the new conversation into one updated memory. Plain text, one short fact per line, no headings, up to ~250 words. PRESERVE PERMANENTLY: the trader's name and any names they mention, every explicit instruction or preference they give (e.g. 'always call me X', 'never do Y', 'remember Z'), their favored pairs/sessions/strategies, risk style, and personal facts. Never drop a stored instruction, name, or fact unless the trader explicitly told Amy to forget it or directly contradicted it. Only remove a line when it is clearly superseded. Keep the tone/humor/detail-level cues too.",
           },
           {
             role: "user",
@@ -139,7 +139,7 @@ export async function summarizeUserStyle(
     if (!res.ok) return existingNotes;
     const data = await res.json();
     const notes = data.choices?.[0]?.message?.content?.trim();
-    return notes ? notes.slice(0, 800) : existingNotes;
+    return notes ? notes.slice(0, 2400) : existingNotes;
   } catch {
     return existingNotes;
   }
