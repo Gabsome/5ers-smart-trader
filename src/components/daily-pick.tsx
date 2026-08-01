@@ -24,16 +24,26 @@ export function DailyPick() {
     onError: (e: any) => toast.error("Pick failed", { description: e?.message }),
   });
 
+  const isWait = data?.pick?.timing?.action === "wait";
+
   const log = useMutation({
     mutationFn: () => tFn({
       data: {
-        pair: data.pick.pair, direction: data.pick.direction, entry: Number(data.pick.entry),
+        pair: data.pick.pair, direction: data.pick.direction,
+        // For a pending order the fill happens at the trigger, not at spot.
+        entry: Number(isWait ? data.pick.timing.trigger_price : data.pick.entry),
         stop_loss: Number(data.pick.stop_loss), take_profit: Number(data.pick.take_profit),
-        lot_size: Number(data.pick.lot_size), pnl_usd: 0, status: "open",
+        lot_size: Number(data.pick.lot_size), pnl_usd: 0,
+        status: isWait ? ("pending" as const) : ("open" as const),
+        trigger_ref: Number(data.pick.live_price ?? data.pick.entry),
         notes: data.pick.rationale,
       },
     }),
-    onSuccess: () => { toast.success("Logged as open trade"); qc.invalidateQueries({ queryKey: ["trades"] }); qc.invalidateQueries({ queryKey: ["dashboard"] }); },
+    onSuccess: () => {
+      toast.success(isWait ? "Logged as pending — flips to open when price hits entry" : "Logged as open trade");
+      qc.invalidateQueries({ queryKey: ["trades"] });
+      qc.invalidateQueries({ queryKey: ["dashboard"] });
+    },
     onError: (e: any) => toast.error("Log failed", { description: e?.message }),
   });
 
@@ -143,6 +153,14 @@ export function DailyPick() {
             <div className="text-xs text-muted-foreground grid grid-cols-2 gap-2">
               <div>SL distance: <span className="text-foreground">{p.sl_pips} pips</span></div>
               <div>TP distance: <span className="text-foreground">{p.tp_pips} pips</span></div>
+              {p.live_price != null && (
+                <div>Live price: <span className="text-foreground font-mono">{Number(p.live_price).toFixed(p.pair.includes("JPY") ? 3 : p.pair.includes("XAU") ? 2 : 5)}</span></div>
+              )}
+              {p.entry_zone && (
+                <div>Valid entry band: <span className="text-foreground font-mono">
+                  {Number(p.entry_zone.low).toFixed(p.pair.includes("JPY") ? 3 : p.pair.includes("XAU") ? 2 : 5)}–{Number(p.entry_zone.high).toFixed(p.pair.includes("JPY") ? 3 : p.pair.includes("XAU") ? 2 : 5)}
+                </span></div>
+              )}
             </div>
 
             <p className="text-sm text-foreground/85 italic border-l-2 border-primary/60 pl-3">"{p.rationale}"</p>
@@ -165,7 +183,7 @@ export function DailyPick() {
             </p>
 
             <Button variant="outline" className="w-full" onClick={() => log.mutate()} disabled={log.isPending}>
-              <BookPlus className="size-4 mr-2" /> Log as open trade
+              <BookPlus className="size-4 mr-2" /> {isWait ? "Log as pending order" : "Log as open trade"}
             </Button>
           </motion.div>
         )}

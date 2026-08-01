@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { TrendingUp, TrendingDown, Trash2, RefreshCw, Check, X, Minus } from "lucide-react";
+import { TrendingUp, TrendingDown, Trash2, RefreshCw, Check, X, Minus, Clock } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { listTrades, updateTrade, deleteTrade } from "@/lib/trades.functions";
@@ -22,7 +22,11 @@ export function OpenPositions() {
 
   const trades = useQuery({ queryKey: ["trades"], queryFn: () => lFn(), refetchInterval: 20_000 });
   const open = useMemo(() => (trades.data ?? []).filter((t: any) => t.status === "open"), [trades.data]);
-  const pairs = useMemo(() => Array.from(new Set(open.map((t: any) => t.pair))), [open]);
+  const pending = useMemo(() => (trades.data ?? []).filter((t: any) => t.status === "pending"), [trades.data]);
+  const pairs = useMemo(
+    () => Array.from(new Set([...open, ...pending].map((t: any) => t.pair))),
+    [open, pending],
+  );
 
   const quotes = useQuery({
     queryKey: ["quotes", pairs],
@@ -55,11 +59,19 @@ export function OpenPositions() {
     mutationFn: (id: string) => dFn({ data: { id } }),
     onSuccess: () => { toast.success("Deleted"); invalidate(); },
   });
+  const activate = useMutation({
+    mutationFn: (id: string) => uFn({ data: { id, status: "open" } }),
+    onSuccess: () => { toast.success("Marked as filled — now an open position"); invalidate(); },
+    onError: (e: any) => toast.error("Failed", { description: e?.message }),
+  });
   const reconcile = useMutation({
     mutationFn: () => rFn(),
     onSuccess: (r: any) => {
-      if (r.closed) toast.success(`Auto-closed ${r.closed} trade(s) at TP/SL`);
-      else toast.message("No positions hit TP/SL yet");
+      const bits: string[] = [];
+      if (r.triggered) bits.push(`${r.triggered} pending order(s) filled`);
+      if (r.closed) bits.push(`${r.closed} trade(s) closed at TP/SL`);
+      if (bits.length) toast.success(bits.join(" · "));
+      else toast.message("Nothing triggered or hit TP/SL yet");
       invalidate();
     },
     onError: (e: any) => toast.error("Check failed", { description: e?.message }),
@@ -70,8 +82,8 @@ export function OpenPositions() {
     <div className="rounded-xl border border-border bg-card p-5">
       <div className="flex items-center justify-between mb-4">
         <div>
-          <h2 className="font-semibold">Open positions</h2>
-          <p className="text-xs text-muted-foreground">Live floating P&L · auto-closes at TP/SL</p>
+          <h2 className="font-semibold">Live book</h2>
+          <p className="text-xs text-muted-foreground">Pending fills · floating P&L · auto-closes at TP/SL</p>
         </div>
         <div className="flex items-center gap-2">
           {open.length > 0 && (
@@ -80,13 +92,50 @@ export function OpenPositions() {
             </Button>
           )}
           <Button size="sm" variant="outline" onClick={() => reconcile.mutate()} disabled={reconcile.isPending}>
-            <RefreshCw className={`size-4 mr-1.5 ${reconcile.isPending ? "animate-spin" : ""}`} /> Check TP/SL
+            <RefreshCw className={`size-4 mr-1.5 ${reconcile.isPending ? "animate-spin" : ""}`} /> Check now
           </Button>
         </div>
       </div>
 
+      {pending.length > 0 && (
+        <div className="mb-4 space-y-2">
+          <div className="text-[10px] uppercase tracking-widest text-muted-foreground font-semibold">
+            Pending orders — waiting for price
+          </div>
+          {pending.map((t: any) => {
+            const price = priceMap[t.pair];
+            const away = price ? Math.abs(price - Number(t.entry)) / pipValue(t.pair) : null;
+            const DirIcon = t.direction === "buy" ? TrendingUp : TrendingDown;
+            return (
+              <div key={t.id} className="flex items-center gap-3 rounded-lg border border-dashed border-primary/40 bg-primary/5 px-3 py-2">
+                <Clock className="size-3.5 text-primary shrink-0" />
+                <span className={`text-xs font-bold flex items-center gap-1 ${t.direction === "buy" ? "text-bull" : "text-bear"}`}>
+                  <DirIcon className="size-3.5" /> {String(t.direction).toUpperCase()}
+                </span>
+                <span className="font-semibold">{t.pair}</span>
+                <span className="text-xs text-muted-foreground font-mono">
+                  entry {Number(t.entry).toFixed(dp(t.pair))} · {Number(t.lot_size).toFixed(2)} lot
+                </span>
+                <span className="ml-auto text-xs text-primary font-medium tabular-nums">
+                  {away == null ? "waiting…" : `${away.toFixed(0)} pips away`}
+                </span>
+                <div className="flex items-center gap-0.5">
+                  <Button size="icon" variant="ghost" className="size-7 text-bull" title="Mark as filled now" onClick={() => activate.mutate(t.id)}><Check className="size-4" /></Button>
+                  <Button size="icon" variant="ghost" className="size-7 text-muted-foreground" title="Cancel order" onClick={() => del.mutate(t.id)}><Trash2 className="size-4" /></Button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+
       {open.length === 0 ? (
-        <div className="py-8 text-center text-sm text-muted-foreground">No open positions. Log a trade or take the Daily Pick.</div>
+        pending.length === 0 ? (
+          <div className="py-8 text-center text-sm text-muted-foreground">No open or pending positions. Log a trade or take the Daily Pick.</div>
+        ) : (
+          <div className="py-4 text-center text-xs text-muted-foreground">No filled positions yet — the orders above flip to open automatically once price reaches entry.</div>
+        )
       ) : (
         <div className="space-y-2">
           {open.map((t: any) => {

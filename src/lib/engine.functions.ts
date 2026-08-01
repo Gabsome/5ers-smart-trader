@@ -13,27 +13,65 @@ import {
 import { requireActiveSubscription } from "./subscription-guard";
 
 /**
- * Scans the user's OPEN trades against live price and auto-closes any that
- * hit TP (win) or SL (loss), updating the account balance in one pass.
+ * One pass over the trader's live book:
+ *  1. PENDING orders are promoted to OPEN the moment live price reaches the
+ *     entry (measured from the price the order was placed at, so buy/sell
+ *     limits and stops are both handled correctly).
+ *  2. OPEN trades are auto-closed as win/loss when price hits TP or SL, and
+ *     the account balance is updated in the same pass.
  */
 export const reconcileTrades = createServerFn({ method: "POST" })
   .middleware([requireActiveSubscription])
   .handler(async ({ context }) => {
     const { supabase, userId } = context;
-    const { data: open } = await supabase
+    const { data: live } = await supabase
       .from("trades")
       .select("*")
       .eq("user_id", userId)
-      .eq("status", "open");
+      .in("status", ["open", "pending"]);
 
-    const openTrades = open ?? [];
-    if (!openTrades.length) return { checked: 0, closed: 0, results: [] as any[] };
+    const liveTrades = live ?? [];
+    if (!liveTrades.length) return { checked: 0, closed: 0, triggered: 0, results: [] as any[] };
 
-    const pairs = Array.from(new Set(openTrades.map((t) => t.pair)));
+    const pairs = Array.from(new Set(liveTrades.map((t) => t.pair)));
     const priceEntries = await Promise.all(
       pairs.map(async (p) => [p, await fetchLatestPrice(p)] as const),
     );
     const prices = Object.fromEntries(priceEntries) as Record<string, number | null>;
+
+    // ---- 1. Pending -> Open --------------------------------------------------
+    const triggeredIds: { id: string; pair: string }[] = [];
+    for (const t of liveTrades.filter((x) => x.status === "pending")) {
+      const price = prices[t.pair];
+      if (price == null) continue;
+      const entry = Number(t.entry);
+      const sl = t.stop_loss == null ? null : Number(t.stop_loss);
+      // Tolerance so a tick that brushes the level still counts as a fill.
+      const tol = sl != null ? Math.abs(entry - sl) * 0.05 : Math.abs(entry) * 0.0002;
+      const ref = t.trigger_ref == null ? null : Number(t.trigger_ref);
+      // Price must travel from where it was when the order was placed to the
+      // entry. If we have no reference we fall back to a simple touch test.
+      const triggered =
+        ref == null
+          ? Math.abs(price - entry) <= tol
+          : ref < entry
+            ? price >= entry - tol
+            : price <= entry + tol;
+      if (!triggered) continue;
+      const { error } = await supabase
+        .from("trades")
+        .update({ status: "open", opened_at: new Date().toISOString() })
+        .eq("id", t.id)
+        .eq("user_id", userId);
+      if (!error) {
+        triggeredIds.push({ id: t.id, pair: t.pair });
+        t.status = "open";
+      }
+    }
+
+    // ---- 2. Open -> Win/Loss -------------------------------------------------
+    const openTrades = liveTrades.filter((t) => t.status === "open");
+
 
     let totalPnl = 0;
     const results: any[] = [];
@@ -67,7 +105,13 @@ export const reconcileTrades = createServerFn({ method: "POST" })
       await supabase.from("profiles").update({ current_balance: newBal }).eq("id", userId);
     }
 
-    return { checked: openTrades.length, closed: results.length, results };
+    return {
+      checked: liveTrades.length,
+      closed: results.length,
+      triggered: triggeredIds.length,
+      triggeredPairs: triggeredIds.map((t) => t.pair),
+      results,
+    };
   });
 
 /** Per-pair win-rate / edge stats the pick engine learns from. */

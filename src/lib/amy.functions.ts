@@ -131,7 +131,7 @@ async function buildLiveContext(
   // Full dashboard-equivalent snapshot so Amy knows every balance, goal and metric.
   if (profile) {
     const startingBalance = Number(profile.starting_balance ?? 2500);
-    const closedAll = trades.filter((t) => t.status !== "open");
+    const closedAll = trades.filter((t) => t.status !== "open" && t.status !== "pending");
     const realized = closedAll.reduce((s, t) => s + Number(t.pnl_usd ?? 0), 0);
     const currentBalance = startingBalance + realized;
     const wins = closedAll.filter((t) => t.status === "win").length;
