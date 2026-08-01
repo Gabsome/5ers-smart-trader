@@ -3,7 +3,7 @@ import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { requireActiveSubscription } from "./subscription-guard";
 import { detectSetup, pipValue, suggestLot, type Candle } from "./indicators";
-import { fetchNewsEvents, newsGuard, summarizeTrades, type NewsEvent } from "./engine.server";
+import { fetchLatestPrice, fetchNewsEvents, newsGuard, summarizeTrades, type NewsEvent } from "./engine.server";
 
 const PAIRS = ["EUR/USD", "GBP/USD", "USD/JPY", "AUD/USD", "USD/CAD", "XAU/USD"] as const;
 const pairSchema = z.enum(["EUR/USD", "GBP/USD", "USD/JPY", "AUD/USD", "USD/CAD", "XAU/USD"]);
@@ -221,12 +221,13 @@ export const getDailyPick = createServerFn({ method: "POST" })
     const macroTf = "4h";
     const scans = await Promise.allSettled(
       pairs.map(async (pair) => {
-        const [ltfCandles, htfCandles, macroCandles] = await Promise.all([
+        const [ltfCandles, htfCandles, macroCandles, livePrice] = await Promise.all([
           fetchCandles(pair, data.interval, 100),
           fetchCandles(pair, htf, 100),
           fetchCandles(pair, macroTf, 100),
+          fetchLatestPrice(pair).catch(() => null),
         ]);
-        return { pair, candles: ltfCandles, setup: detectSetup(ltfCandles), htf: detectSetup(htfCandles), macro: detectSetup(macroCandles) };
+        return { pair, candles: ltfCandles, livePrice, setup: detectSetup(ltfCandles), htf: detectSetup(htfCandles), macro: detectSetup(macroCandles) };
       }),
     );
 
@@ -237,14 +238,20 @@ export const getDailyPick = createServerFn({ method: "POST" })
       pair: string; bias: "buy" | "sell"; entry: number; sl: number; tp: number;
       slPips: number; tpPips: number; lot: number; score: number; setup: any; htf: any; macro: any;
       factors: string[];
-      timing: { action: "enter_now" | "wait"; order_type: "market" | "buy_limit" | "sell_limit" | "buy_stop" | "sell_stop" | "buy_stop_limit" | "sell_stop_limit"; trigger_price: number; limit_price: number | null; note: string };
+      timing: {
+        action: "enter_now" | "wait";
+        order_type: "market" | "buy_limit" | "sell_limit" | "buy_stop" | "sell_stop" | "buy_stop_limit" | "sell_stop_limit";
+        trigger_price: number; limit_price: number | null; note: string;
+        live_price: number; distance_pips: number;
+        zone_low: number; zone_high: number; invalidation: number;
+      };
       lotCapped: boolean; actualRiskUsd: number;
     };
     const candidates: Candidate[] = [];
 
     for (const r of scans) {
       if (r.status !== "fulfilled") continue;
-      const { pair, candles, setup, htf: htfSetup, macro: macroSetup } = r.value;
+      const { pair, candles, livePrice, setup, htf: htfSetup, macro: macroSetup } = r.value;
       if (!setup || !setup.bias) continue;
 
       // News guard — halt pairs with high-impact news inside the window.
@@ -254,11 +261,31 @@ export const getDailyPick = createServerFn({ method: "POST" })
       const pip = pipValue(pair);
       const dpp = pair.includes("XAU") ? 10 : pair.includes("JPY") ? 9 : 10;
 
-      // Entry timing — NOW vs WAIT. Ideal pullback zone = EMA20.
+      // ---- Entry timing, anchored to the LIVE tick, not the last closed bar ---
+      // The old engine measured everything off `setup.lastClose`, which can be up
+      // to a full 15-minute bar old. That is exactly why "enter now" arrived after
+      // price had already left the zone. We now decide against the live price.
+      const spot = Number.isFinite(livePrice as number) && (livePrice as number) > 0
+        ? (livePrice as number)
+        : setup.lastClose;
+
+      // Ideal pullback zone = EMA20, with a tolerance band around it. Anywhere
+      // inside the band is a valid market entry right now.
       const idealEntry = setup.ema20;
-      const distToIdeal = Math.abs(setup.lastClose - idealEntry);
-      const enterNow = distToIdeal <= setup.atr * 0.25;
-      const entry = enterNow ? setup.lastClose : idealEntry;
+      const zoneHalf = setup.atr * 0.45;
+      const zoneLow = idealEntry - zoneHalf;
+      const zoneHigh = idealEntry + zoneHalf;
+      const distToIdeal = Math.abs(spot - idealEntry);
+      const inZone = spot >= zoneLow && spot <= zoneHigh;
+
+      // Missed-move guard: if price has already run far past value in the trade
+      // direction, the entry is gone. Never chase — skip instead of printing a
+      // stale "enter now" the trader can no longer take.
+      const extension = setup.bias === "buy" ? spot - idealEntry : idealEntry - spot;
+      if (extension > setup.atr * 1.0) continue;
+
+      const enterNow = inZone;
+      const entry = enterNow ? spot : idealEntry;
 
       // Structure-aware stop: anchor it BEYOND the most recent swing (+0.5·ATR
       // buffer) so price must genuinely break structure to hit it — far less
@@ -307,63 +334,78 @@ export const getDailyPick = createServerFn({ method: "POST" })
       const noFreshMomentumAgainst = setup.bias === "buy"
         ? !(lastCandle.c < lastCandle.o && prevCandle.c < prevCandle.o && lastCandle.c < setup.ema20)
         : !(lastCandle.c > lastCandle.o && prevCandle.c > prevCandle.o && lastCandle.c > setup.ema20);
-      const volRatio = setup.atr / Math.max(setup.lastClose, 1e-9);
+      const volRatio = setup.atr / Math.max(spot, 1e-9);
       const volatilityOk = pair.includes("XAU")
         ? volRatio >= 0.00035 && volRatio <= 0.0065
         : volRatio >= 0.00008 && volRatio <= 0.0025;
 
       // ---- Pending-order intelligence -------------------------------------
-      // Decide the EXACT order type a broker needs. Two questions:
-      //   1) Does price have to RISE or FALL to reach the trigger?
-      //   2) Are we entering INTO a pullback (limit) or on a BREAKOUT reclaim (stop)?
-      // BUY: trigger below price + with-trend pullback = BUY LIMIT; trigger above
-      //      price (price dipped below EMA20, want reclaim confirmation) = BUY STOP.
-      // Mirror for SELL. On high-volatility instruments (XAU/wide ATR) a plain stop
-      // can slip badly, so we upgrade it to a STOP-LIMIT with a capped fill price.
-      const triggerAbove = idealEntry > setup.lastClose;
-      const volatile = pair.includes("XAU") || setup.atr / Math.max(setup.lastClose, 1e-9) > 0.004;
+      // Decided against the LIVE price so the order type is always executable
+      // at the broker the moment it is read:
+      //   BUY  · trigger below live price -> BUY LIMIT   (price comes down to us)
+      //          trigger above live price -> BUY STOP    (reclaim confirmation)
+      //   SELL · mirrored.
+      // On volatile instruments (XAU / wide ATR) a plain stop can slip badly, so
+      // it is upgraded to a STOP-LIMIT with a capped fill price.
+      const triggerAbove = idealEntry > spot;
+      const volatile = pair.includes("XAU") || volRatio > 0.004;
       const slipCap = setup.atr * 0.3;
+      const invalidation = structureStop;
+      const common = {
+        live_price: spot,
+        distance_pips: Math.round(distToIdeal / pip),
+        zone_low: zoneLow,
+        zone_high: zoneHigh,
+        invalidation,
+      };
 
       let timing: Candidate["timing"];
       if (enterNow) {
         timing = {
+          ...common,
           action: "enter_now", order_type: "market", trigger_price: entry, limit_price: null,
-          note: `Price is sitting at the EMA20 pullback zone — execute a MARKET order now.`,
+          note: `Live price ${fmtPrice(spot)} is inside the valid entry band ${fmtPrice(zoneLow)}–${fmtPrice(zoneHigh)} — take it as a MARKET order now. Still valid anywhere inside that band, so a few pips of movement while you click does not kill the trade.`,
         };
       } else if (setup.bias === "buy") {
         if (!triggerAbove) {
           timing = {
+            ...common,
             action: "wait", order_type: "buy_limit", trigger_price: idealEntry, limit_price: null,
-            note: `Price is ${(distToIdeal / pip).toFixed(0)} pips above entry. Place a BUY LIMIT at ${fmtPrice(idealEntry)} so price comes down to you. Cancel if structure breaks.`,
+            note: `Live price ${fmtPrice(spot)} is ${(distToIdeal / pip).toFixed(0)} pips ABOVE the entry. Place a BUY LIMIT at ${fmtPrice(idealEntry)} so price comes down to you. Cancel if price closes below ${fmtPrice(invalidation)}.`,
           };
         } else if (volatile) {
           const limitPrice = idealEntry + slipCap;
           timing = {
+            ...common,
             action: "wait", order_type: "buy_stop_limit", trigger_price: idealEntry, limit_price: limitPrice,
-            note: `Price dipped below EMA20. Use a BUY STOP-LIMIT: trigger ${fmtPrice(idealEntry)}, limit ${fmtPrice(limitPrice)} — fills only on a confirmed reclaim and caps slippage on this volatile instrument.`,
+            note: `Live price ${fmtPrice(spot)} is ${(distToIdeal / pip).toFixed(0)} pips BELOW the entry. Use a BUY STOP-LIMIT: trigger ${fmtPrice(idealEntry)}, limit ${fmtPrice(limitPrice)} — fills only on a confirmed reclaim and caps slippage on this volatile instrument.`,
           };
         } else {
           timing = {
+            ...common,
             action: "wait", order_type: "buy_stop", trigger_price: idealEntry, limit_price: null,
-            note: `Price is below EMA20. Place a BUY STOP at ${fmtPrice(idealEntry)} — triggers only when price reclaims the level (breakout confirmation), avoiding a falling-knife entry.`,
+            note: `Live price ${fmtPrice(spot)} is ${(distToIdeal / pip).toFixed(0)} pips BELOW the entry. Place a BUY STOP at ${fmtPrice(idealEntry)} — triggers only when price reclaims the level, avoiding a falling-knife entry.`,
           };
         }
       } else {
         if (triggerAbove) {
           timing = {
+            ...common,
             action: "wait", order_type: "sell_limit", trigger_price: idealEntry, limit_price: null,
-            note: `Price is ${(distToIdeal / pip).toFixed(0)} pips below entry. Place a SELL LIMIT at ${fmtPrice(idealEntry)} so price rallies up to you. Cancel if structure breaks.`,
+            note: `Live price ${fmtPrice(spot)} is ${(distToIdeal / pip).toFixed(0)} pips BELOW the entry. Place a SELL LIMIT at ${fmtPrice(idealEntry)} so price rallies up to you. Cancel if price closes above ${fmtPrice(invalidation)}.`,
           };
         } else if (volatile) {
           const limitPrice = idealEntry - slipCap;
           timing = {
+            ...common,
             action: "wait", order_type: "sell_stop_limit", trigger_price: idealEntry, limit_price: limitPrice,
-            note: `Price popped above EMA20. Use a SELL STOP-LIMIT: trigger ${fmtPrice(idealEntry)}, limit ${fmtPrice(limitPrice)} — fills only on a confirmed rejection and caps slippage on this volatile instrument.`,
+            note: `Live price ${fmtPrice(spot)} is ${(distToIdeal / pip).toFixed(0)} pips ABOVE the entry. Use a SELL STOP-LIMIT: trigger ${fmtPrice(idealEntry)}, limit ${fmtPrice(limitPrice)} — fills only on a confirmed rejection and caps slippage on this volatile instrument.`,
           };
         } else {
           timing = {
+            ...common,
             action: "wait", order_type: "sell_stop", trigger_price: idealEntry, limit_price: null,
-            note: `Price is above EMA20. Place a SELL STOP at ${fmtPrice(idealEntry)} — triggers only when price breaks back below the level (breakdown confirmation).`,
+            note: `Live price ${fmtPrice(spot)} is ${(distToIdeal / pip).toFixed(0)} pips ABOVE the entry. Place a SELL STOP at ${fmtPrice(idealEntry)} — triggers only when price breaks back below the level.`,
           };
         }
       }
@@ -387,7 +429,9 @@ export const getDailyPick = createServerFn({ method: "POST" })
       const ltfAligned = (setup.bias === "buy" && setup.trend === "up")
         || (setup.bias === "sell" && setup.trend === "down");
       const rsiInZone = setup.bias === "buy" ? setup.rsi > 40 && setup.rsi < 65 : setup.rsi > 35 && setup.rsi < 60;
-      const pullbackOk = Math.abs(setup.lastClose - setup.ema20) < setup.atr * 0.6;
+      // Pullback measured on the LIVE price (with a little slack for drift since
+      // the bar closed) — this is what the trader can actually execute against.
+      const pullbackOk = Math.abs(spot - setup.ema20) < setup.atr * 0.9;
       const emaSeparation = Math.abs(setup.ema20 - setup.ema50) > setup.atr * 0.3;
 
       // Core A+ gate — the non-negotiables for a with-trend pullback entry:
@@ -412,8 +456,9 @@ export const getDailyPick = createServerFn({ method: "POST" })
       else if (timing.action === "wait") factors.push(`No perfect rejection candle yet, so the system waits for the exact pending trigger instead of forcing market entry.`);
       factors.push(`SL (${slPips.toFixed(0)} pips) sits beyond the recent ${setup.bias === "buy" ? "swing low" : "swing high"} +0.5·ATR — price must break market structure to hit it, so it's unlikely to trigger before TP.`);
       factors.push(enterNow
-        ? `Price is at the level — market entry valid right now.`
-        : `Pending ${timing.order_type.toUpperCase().replaceAll("_", " ")} at EMA20 — disciplined entry, no chasing.`);
+        ? `Checked against the LIVE tick (${fmtPrice(spot)}), not a stale candle close — price is inside the ${fmtPrice(zoneLow)}–${fmtPrice(zoneHigh)} execution band right now.`
+        : `Pending ${timing.order_type.toUpperCase().replaceAll("_", " ")} at EMA20 — trigger is on the correct side of the live price (${fmtPrice(spot)}), so the order is placeable immediately.`);
+      factors.push(`Missed-move guard passed: price has not extended more than 1·ATR past value, so this is an entry, not a chase.`);
       factors.push(`Lot ${lot} sized for ~$${actualRiskUsd} risk → $${data.targetUsd} target. ${lotCapped ? `(Capped by max-lot rule for $${balance.toFixed(0)} account.)` : "(Full risk allocated.)"}`);
 
       // Learning: your own historical edge on this pair.
@@ -434,6 +479,9 @@ export const getDailyPick = createServerFn({ method: "POST" })
       score += noFreshMomentumAgainst ? 4 : -6; // graded, not gated
       if (bodyNotDoji) score += 4;
       if (rejectionOk) score += 6;
+      // Executability: a setup you can take at the live price right now is worth
+      // more than one that still needs price to travel to a pending trigger.
+      score += enterNow ? 6 : Math.max(0, 4 - Math.round(distToIdeal / Math.max(setup.atr, 1e-9) * 4));
       // Adaptive: shift by your proven edge on this pair (smoothed, ±~12 pts).
       if (stat && stat.trades >= 3) score += Math.round((stat.edge - 50) * 0.4);
 
@@ -510,6 +558,9 @@ export const getDailyPick = createServerFn({ method: "POST" })
         lot_capped: best.lotCapped,
         account_balance: balance,
         timing: best.timing,
+        live_price: best.timing.live_price,
+        entry_zone: { low: best.timing.zone_low, high: best.timing.zone_high },
+        invalidation: best.timing.invalidation,
         confidence,
         rationale,
         factors: best.factors,

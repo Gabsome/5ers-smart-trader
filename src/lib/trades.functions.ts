@@ -11,10 +11,15 @@ const tradeInput = z.object({
   lot_size: z.number().min(0.01).max(100),
   pnl_usd: z.number().default(0),
   pips: z.number().nullable().optional(),
-  status: z.enum(["open", "win", "loss", "breakeven"]).default("open"),
+  // "pending" = order placed at the broker but price has not reached the entry
+  // yet. The engine watches live price and flips it to "open" on trigger.
+  status: z.enum(["pending", "open", "win", "loss", "breakeven"]).default("open"),
   notes: z.string().max(2000).nullable().optional(),
   signal_id: z.string().uuid().nullable().optional(),
+  trigger_ref: z.number().nullable().optional(),
 });
+
+const LIVE = new Set(["open", "pending"]);
 
 export const logTrade = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
@@ -27,14 +32,32 @@ export const logTrade = createServerFn({ method: "POST" })
       .maybeSingle();
     const mode = profile?.current_mode ?? "challenge";
 
+    // For a pending order we remember where price was when it was placed, so
+    // the reconciler knows which side price must travel from to trigger it.
+    let triggerRef = data.trigger_ref ?? null;
+    if (data.status === "pending" && triggerRef == null) {
+      try {
+        const { fetchLatestPrice } = await import("./engine.server");
+        triggerRef = await fetchLatestPrice(data.pair);
+      } catch {
+        triggerRef = null;
+      }
+    }
+
     const { data: inserted, error } = await context.supabase
       .from("trades")
-      .insert({ ...data, user_id: context.userId, mode, closed_at: data.status === "open" ? null : new Date().toISOString() })
+      .insert({
+        ...data,
+        trigger_ref: triggerRef,
+        user_id: context.userId,
+        mode,
+        closed_at: LIVE.has(data.status) ? null : new Date().toISOString(),
+      })
       .select()
       .single();
     if (error) throw new Error(error.message);
 
-    if (data.status !== "open" && data.pnl_usd) {
+    if (!LIVE.has(data.status) && data.pnl_usd) {
       const newBal = Number(profile?.current_balance ?? 2500) + Number(data.pnl_usd);
       await context.supabase.from("profiles").update({ current_balance: newBal }).eq("id", context.userId);
     }
@@ -54,7 +77,12 @@ export const updateTrade = createServerFn({ method: "POST" })
       .maybeSingle();
 
     const patch: any = { ...rest };
-    if (rest.status && rest.status !== "open" && existing?.status === "open") {
+    // Pending -> Open: the order just triggered, so the clock starts now.
+    if (rest.status === "open" && existing?.status === "pending") {
+      patch.opened_at = new Date().toISOString();
+      patch.closed_at = null;
+    }
+    if (rest.status && !LIVE.has(rest.status) && LIVE.has(existing?.status ?? "")) {
       patch.closed_at = new Date().toISOString();
       const { data: profile } = await context.supabase
         .from("profiles").select("current_balance").eq("id", context.userId).maybeSingle();
@@ -99,10 +127,13 @@ export const getDashboard = createServerFn({ method: "GET" })
     const profitTargetUsd = Number(profile?.profit_target_usd ?? 200);
 
     const today = new Date(); today.setHours(0, 0, 0, 0);
-    const todayTrades = all.filter((t) => new Date(t.opened_at) >= today && t.status !== "open");
+    // Only settled trades move money — open AND pending are excluded everywhere,
+    // so balance, today's P&L, win rate and the equity curve always agree.
+    const isSettled = (t: any) => !LIVE.has(t.status);
+    const todayTrades = all.filter((t) => new Date(t.opened_at) >= today && isSettled(t));
     const todayPnl = todayTrades.reduce((s, t) => s + Number(t.pnl_usd ?? 0), 0);
 
-    const closed = all.filter((t) => t.status !== "open");
+    const closed = all.filter(isSettled);
     const wins = closed.filter((t) => t.status === "win").length;
     const winRate = closed.length ? (wins / closed.length) * 100 : 0;
 
@@ -140,6 +171,7 @@ export const getDashboard = createServerFn({ method: "GET" })
       winRate,
       tradesCount: closed.length,
       openTrades: all.filter((t) => t.status === "open").length,
+      pendingTrades: all.filter((t) => t.status === "pending").length,
       equity,
       target: {
         pct: targetPct,

@@ -31,7 +31,7 @@ function Journal() {
   const [editTrade, setEditTrade] = useState<any | null>(null);
   const [form, setForm] = useState({
     pair: "EUR/USD", direction: "buy" as "buy" | "sell", entry: "", stop_loss: "", take_profit: "",
-    lot_size: "0.01", pnl_usd: "0", status: "open" as const, notes: "",
+    lot_size: "0.01", pnl_usd: "0", status: "open" as "pending" | "open" | "win" | "loss" | "breakeven", notes: "",
   });
 
   const create = useMutation({
@@ -96,6 +96,7 @@ function Journal() {
                 <Select value={form.status} onValueChange={(v) => setForm({ ...form, status: v as any })}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
+                    <SelectItem value="pending">Pending (waiting for entry)</SelectItem>
                     <SelectItem value="open">Open</SelectItem>
                     <SelectItem value="win">Win</SelectItem>
                     <SelectItem value="loss">Loss</SelectItem>
@@ -142,8 +143,17 @@ function Journal() {
                   <td className={`p-3 text-right tabular-nums font-semibold ${Number(t.pnl_usd) > 0 ? "text-bull" : Number(t.pnl_usd) < 0 ? "text-bear" : ""}`}>
                     {Number(t.pnl_usd) >= 0 ? "+" : ""}${Number(t.pnl_usd).toFixed(2)}
                   </td>
-                  <td className="p-3"><span className="text-xs px-2 py-0.5 rounded bg-muted">{t.status}</span></td>
+                  <td className="p-3">
+                    <span className={`text-xs px-2 py-0.5 rounded ${t.status === "pending" ? "bg-primary/15 text-primary" : "bg-muted"}`}>
+                      {t.status === "pending" ? "pending · waiting for entry" : t.status}
+                    </span>
+                  </td>
                   <td className="p-3 text-right">
+                    {t.status === "pending" && (
+                      <Button size="sm" variant="ghost" className="h-7" title="Price reached entry" onClick={() => uFn({ data: { id: t.id, status: "open" } }).then(() => { toast.success("Order filled — now open"); qc.invalidateQueries({ queryKey: ["trades"] }); qc.invalidateQueries({ queryKey: ["dashboard"] }); })}>
+                        Mark filled
+                      </Button>
+                    )}
                     {t.status === "open" && (
                       <CloseInline onSave={(pnl, status) => closeTrade.mutate({ id: t.id, pnl, status })} />
                     )}
@@ -246,6 +256,7 @@ function EditTradeDialog({
             <Select value={f.status} onValueChange={(v) => setF({ ...f, status: v })}>
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
+                <SelectItem value="pending">Pending (waiting for entry)</SelectItem>
                 <SelectItem value="open">Open</SelectItem>
                 <SelectItem value="win">Win</SelectItem>
                 <SelectItem value="loss">Loss</SelectItem>

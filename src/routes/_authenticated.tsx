@@ -6,6 +6,7 @@ import { LayoutDashboard, Radio, BookOpen, Settings, LogOut, HelpCircle } from "
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
 import { ModeSwitcher } from "@/components/mode-switcher";
+import { InstallAppButton } from "@/components/install-app-button";
 import { Logo } from "@/components/logo";
 import { LoadingScreen } from "@/components/loading-screen";
 import { Paywall } from "@/components/paywall";
@@ -70,6 +71,7 @@ function AuthLayout() {
             })}
           </nav>
           <div className="flex items-center gap-2 shrink-0">
+            <InstallAppButton />
             <ModeSwitcher />
             <Button variant="ghost" size="icon" onClick={() => signOut().then(() => nav({ to: "/" }))} title="Sign out">
               <LogOut className="size-4" />

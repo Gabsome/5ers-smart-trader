@@ -244,6 +244,7 @@ export type Database = {
           status: string
           stop_loss: number | null
           take_profit: number | null
+          trigger_ref: number | null
           user_id: string
         }
         Insert: {
@@ -263,6 +264,7 @@ export type Database = {
           status?: string
           stop_loss?: number | null
           take_profit?: number | null
+          trigger_ref?: number | null
           user_id: string
         }
         Update: {
@@ -282,6 +284,7 @@ export type Database = {
           status?: string
           stop_loss?: number | null
           take_profit?: number | null
+          trigger_ref?: number | null
           user_id?: string
         }
         Relationships: []
