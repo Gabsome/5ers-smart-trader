@@ -1,0 +1,17 @@
+{
+  "name": "7star Challenge — by X-epic Enterprise",
+  "short_name": "7star",
+  "description": "AI-assisted trading cockpit: real-time entries on majors + XAUUSD, risk-aware journaling and Amy, your voice trading assistant.",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#070b16",
+  "theme_color": "#070b16",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
