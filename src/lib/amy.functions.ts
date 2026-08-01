@@ -150,11 +150,12 @@ async function buildLiveContext(
     const todayDd = Math.max(0, -todayPnl);
     const ddFromStart = Math.max(0, startingBalance - currentBalance);
     const openCount = trades.filter((t) => t.status === "open").length;
+    const pendingCount = trades.filter((t) => t.status === "pending").length;
 
     lines.push(
       `Trader: ${profile.display_name ?? "there"}${profile.email ? ` (${profile.email})` : ""}.`,
       `Account: ${profile.current_mode} mode · balance $${fmtNum(currentBalance, 2)} (started $${fmtNum(startingBalance, 2)}) · realized/total P&L $${fmtNum(realized, 2)}.`,
-      `Dashboard: today's P&L $${fmtNum(todayPnl, 2)} · daily goal $${fmtNum(dailyGoal, 2)} (${dailyGoalPct.toFixed(0)}% of goal) · win rate ${winRate.toFixed(0)}% over ${closedAll.length} closed trades · ${openCount} open.`,
+      `Dashboard: today's P&L $${fmtNum(todayPnl, 2)} · daily goal $${fmtNum(dailyGoal, 2)} (${dailyGoalPct.toFixed(0)}% of goal) · win rate ${winRate.toFixed(0)}% over ${closedAll.length} closed trades · ${openCount} open · ${pendingCount} pending.`,
       `Profit target: $${fmtNum(targetUsd, 2)} (${targetPct.toFixed(1)}% of start) · $${fmtNum(realized, 2)} achieved (${targetProgress.toFixed(0)}% there).`,
       `Drawdown: today used $${fmtNum(todayDd, 2)} of $${fmtNum(dailyDdLimit, 2)} daily limit · overall down $${fmtNum(ddFromStart, 2)} of $${fmtNum(maxDdLimit, 2)} max limit.`,
       `Settings: risk ${fmtNum(profile.risk_per_trade_pct, 2)}%/trade · watched pairs ${(profile.watched_pairs ?? []).join(", ") || "none"} · Amy personality ${profile.amy_personality}, humor ${profile.amy_humor_level}/10, trade-context ${profile.amy_context_trades ? "on" : "off"}.`,
@@ -162,10 +163,19 @@ async function buildLiveContext(
   }
 
   const open = trades.filter((t) => t.status === "open");
-  const closed = trades.filter((t) => t.status !== "open");
+  const pending = trades.filter((t) => t.status === "pending");
+  const closed = trades.filter((t) => t.status !== "open" && t.status !== "pending");
   if (open.length) {
     lines.push("Open positions:");
     for (const t of open) {
+      lines.push(
+        `• ${t.direction.toUpperCase()} ${t.pair} ${t.lot_size} lots, entry ${fmtNum(t.entry)}, SL ${fmtNum(t.stop_loss)}, TP ${fmtNum(t.take_profit)}.`,
+      );
+    }
+  }
+  if (pending.length) {
+    lines.push("Pending orders (not filled yet — waiting for price to reach entry):");
+    for (const t of pending) {
       lines.push(
         `• ${t.direction.toUpperCase()} ${t.pair} ${t.lot_size} lots, entry ${fmtNum(t.entry)}, SL ${fmtNum(t.stop_loss)}, TP ${fmtNum(t.take_profit)}.`,
       );
