@@ -6,6 +6,7 @@ import { LayoutDashboard, Radio, BookOpen, Settings, LogOut, HelpCircle } from "
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
 import { ModeSwitcher } from "@/components/mode-switcher";
+import { InstallAppButton } from "@/components/install-app-button";
 import { Logo } from "@/components/logo";
 import { LoadingScreen } from "@/components/loading-screen";
 import { Paywall } from "@/components/paywall";
